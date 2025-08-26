@@ -8,204 +8,116 @@ import { GraphNode, FlowNode, FlowEdge } from '../types';
 import { EDGE_COLORS, LAYOUT_CONFIG, VISUAL_CONFIG, EdgeColorKey } from '../constants/graphVisualization';
 
 /**
- * Calculates possible order statuses for each node based on actual execution paths
- * This implementation properly traces paths and excludes statuses from wait loops or divergent paths
+ * Calculates possible order statuses for each node based on actual execution paths.
+ * 
+ * This implementation uses a correct and efficient fixed-point iteration algorithm.
+ * It iteratively processes nodes, propagating status sets forward and correctly merging them at
+ * junction points. This approach correctly handles complex flows with multiple paths and cycles 
+ * (wait loops) by continuing to process nodes until their status sets stabilize. This ensures an 
+ * accurate calculation of all possible statuses an order could have upon arriving at any given node.
+ * 
+ * @param data - An array of all nodes in the workflow graph.
+ * @returns A Map where keys are node IDs and values are a Set of possible order status strings.
  */
 export const calculatePossibleOrderStatuses = (data: GraphNode[]): Map<string, Set<string>> => {
+  if (!data || data.length === 0) {
+    return new Map();
+  }
+
   const nodeStatusMap = new Map<string, Set<string>>();
-  
-  // Initialize all nodes with empty status sets
-  data.forEach(node => {
+  const predecessorList = new Map<string, Array<{ sourceId: string; condition: string }>>();
+  const successorList = new Map<string, string[]>();
+
+  // 1. Initialize data structures
+  for (const node of data) {
     nodeStatusMap.set(node.nodeId, new Set<string>());
-  });
+    predecessorList.set(node.nodeId, []);
+    successorList.set(node.nodeId, []);
+  }
 
-  // Build adjacency list for forward traversal
-  const adjacencyList = new Map<string, Array<{targetId: string; condition: string}>>();
-  
-  data.forEach(node => {
-    adjacencyList.set(node.nodeId, []);
-  });
-
-  // Populate adjacency list from nextNodes
-  data.forEach(sourceNode => {
-    sourceNode.nextNodes.forEach(nextNode => {
-      let targetId: string;
-      let condition: string;
-      
-      if (typeof nextNode.on === 'string' && typeof nextNode.to === 'string') {
-        condition = nextNode.on;
-        targetId = nextNode.to;
-      } else {
-        const entries = Object.entries(nextNode as Record<string, string>);
-        if (entries.length > 0) {
-          [condition, targetId] = entries[0];
-        } else {
-          return;
-        }
-      }
-
-      const connections = adjacencyList.get(sourceNode.nodeId) || [];
-      connections.push({targetId, condition});
-      adjacencyList.set(sourceNode.nodeId, connections);
-    });
-  });
-
-  /**
-   * Traces all valid execution paths to a target node
-   * Returns the possible statuses when reaching that node
-   */
-  const tracePathsToNode = (targetNodeId: string): Set<string> => {
-    const possibleStatuses = new Set<string>();
-    
-    // Quick timeout check
-    const startTime = Date.now();
-    const TIMEOUT_MS = 2000; // 2 seconds per node
-    
-    // Find start nodes (nodes with no incoming edges)
-    const hasIncomingEdge = new Set<string>();
-    data.forEach(node => {
-      const connections = adjacencyList.get(node.nodeId) || [];
-      connections.forEach(conn => hasIncomingEdge.add(conn.targetId));
-    });
-    
-    const startNodes = data.filter(node => !hasIncomingEdge.has(node.nodeId));
-    const entryPoints = startNodes.length > 0 ? startNodes : [data[0]]; // Use first node if no clear entry
-    
-    // Simple BFS with limited depth
-    const queue: Array<{nodeId: string; pathStatuses: Set<string>; depth: number; visited: Set<string>}> = [];
-    const MAX_DEPTH = 15;
-    
-    // Initialize queue with entry points
-    entryPoints.forEach(entryNode => {
-      if (!entryNode) return;
-      
-      const initialStatuses = new Set<string>();
-      
-      // Get initial statuses from entry node
-      if (entryNode.orderChanges) {
-        entryNode.orderChanges.forEach(change => {
-          if (change.set && change.set['order.status']) {
-            const statusValue = change.set['order.status'];
-            if (typeof statusValue === 'string') {
-              initialStatuses.add(statusValue);
+  // 2. Build predecessor and successor lists for graph traversal
+  for (const sourceNode of data) {
+    for (const nextNode of sourceNode.nextNodes) {
+        const handleEdge = (targetId: string, condition: string) => {
+            if (data.some(n => n.nodeId === targetId)) { // Ensure target exists
+                predecessorList.get(targetId)!.push({ sourceId: sourceNode.nodeId, condition });
+                successorList.get(sourceNode.nodeId)!.push(targetId);
             }
-          }
-        });
-      }
-      
-      if (entryNode.nodeId === targetNodeId) {
-        initialStatuses.forEach(status => possibleStatuses.add(status));
-      } else {
-        queue.push({
-          nodeId: entryNode.nodeId,
-          pathStatuses: initialStatuses,
-          depth: 0,
-          visited: new Set([entryNode.nodeId])
-        });
-      }
-    });
-    
-    // BFS traversal
-    while (queue.length > 0) {
-      // Timeout check
-      if (Date.now() - startTime > TIMEOUT_MS) {
-        console.warn(`Timeout reached for node ${targetNodeId}`);
-        break;
-      }
-      
-      const {nodeId, pathStatuses, depth, visited} = queue.shift()!;
-      
-      if (depth > MAX_DEPTH) {
-        continue;
-      }
-      
-      const currentNode = data.find(n => n.nodeId === nodeId);
-      if (!currentNode) continue;
-      
-      // Process outgoing edges
-      const connections = adjacencyList.get(nodeId) || [];
-      connections.forEach(({targetId, condition}) => {
-        // Avoid cycles
-        if (visited.has(targetId)) {
-          return;
-        }
-        
-        let nextStatuses = new Set(pathStatuses);
-        
-        // Check for order status changes
-        if (currentNode.orderChanges) {
-          const statusChanges = currentNode.orderChanges.filter(change => 
-            change.on === condition && change.set && change.set['order.status']
-          );
-          
-          if (statusChanges.length > 0) {
-            nextStatuses.clear();
-            statusChanges.forEach(change => {
-              const statusValue = change.set['order.status'];
-              if (typeof statusValue === 'string') {
-                nextStatuses.add(statusValue);
-              }
-            });
-          }
-        }
-        
-        if (targetId === targetNodeId) {
-          nextStatuses.forEach(status => possibleStatuses.add(status));
-        } else {
-          const newVisited = new Set(visited);
-          newVisited.add(targetId);
-          queue.push({
-            nodeId: targetId,
-            pathStatuses: nextStatuses,
-            depth: depth + 1,
-            visited: newVisited
-          });
-        }
-      });
-    }
-    
-    return possibleStatuses;
-  };
+        };
 
-  // Calculate statuses for all nodes with timeout
-  const globalStartTime = Date.now();
-  const GLOBAL_TIMEOUT_MS = 10000; // 10 seconds total
-  
-  console.log(`Calculating order statuses for ${data.length} nodes...`);
-  
-  for (let i = 0; i < data.length; i++) {
-    const node = data[i];
+        if (isNewNodeStructure(nextNode)) {
+            handleEdge(nextNode.to, nextNode.on);
+        } else { // Handle legacy and wait structures
+            for (const [condition, target] of Object.entries(nextNode as Record<string, string>)) {
+                if (target) {
+                    handleEdge(target, condition);
+                }
+            }
+        }
+    }
+  }
+
+  // 3. Initialize a worklist with all nodes. The algorithm will iterate until no changes occur.
+  const worklist: string[] = data.map(node => node.nodeId);
+
+  // 4. Fixed-point iteration using the worklist
+  while (worklist.length > 0) {
+    const currentNodeId = worklist.shift()!;
+    const currentNode = data.find(n => n.nodeId === currentNodeId)!;
     
-    // Check global timeout
-    if (Date.now() - globalStartTime > GLOBAL_TIMEOUT_MS) {
-      console.warn('Global timeout reached, stopping calculation');
-      break;
+    // Calculate the new set of statuses for the current node by looking at its predecessors
+    const newStatuses = new Set<string>();
+    const predecessors = predecessorList.get(currentNodeId) || [];
+
+    if (predecessors.length === 0) {
+      // Start nodes have no predecessors, so their status set is initially empty unless they set one themselves.
+      // This is handled by the logic below which checks for status changes on edges.
+      // For this algorithm, we focus on what flows *into* a node. For a start node, nothing flows in.
+    } else {
+        for (const { sourceId, condition } of predecessors) {
+            const sourceNode = data.find(n => n.nodeId === sourceId)!;
+            const statusesAtSource = nodeStatusMap.get(sourceId)!;
+
+            const statusChangesOnPath = (sourceNode.orderChanges || []).filter(
+                change => change.on === condition && change.set && change.set['order.status']
+            );
+
+            if (statusChangesOnPath.length > 0) {
+                // This edge OVERWRITES the status. The statuses from the source node are ignored on this path.
+                for (const change of statusChangesOnPath) {
+                    const statusValue = change.set['order.status'];
+                    if (Array.isArray(statusValue)) {
+                        statusValue.forEach(s => newStatuses.add(s));
+                    } else if (typeof statusValue === 'string') {
+                        newStatuses.add(statusValue);
+                    }
+                }
+            } else {
+                // This edge PROPAGATES the statuses from the source node.
+                for (const status of statusesAtSource) {
+                    newStatuses.add(status);
+                }
+            }
+        }
     }
     
-    // Progress logging for large datasets
-    if (i % 20 === 0 && i > 0) {
-      console.log(`Progress: ${i}/${data.length} nodes processed`);
-    }
-    
-    try {
-      const statuses = tracePathsToNode(node.nodeId);
-      nodeStatusMap.set(node.nodeId, statuses);
-    } catch (error) {
-      console.warn(`Error processing node ${node.nodeId}:`, error);
-      // Continue with empty status set
+    // Compare the newly computed set with the existing set for the node
+    const currentStatuses = nodeStatusMap.get(currentNodeId)!;
+    if (newStatuses.size !== currentStatuses.size || ![...newStatuses].every(s => currentStatuses.has(s))) {
+        // The status set has changed (grown). Update it.
+        nodeStatusMap.set(currentNodeId, newStatuses);
+
+        // Since this node's status changed, all its successors need to be re-evaluated.
+        // Add successors to the worklist if they aren't already there.
+        const successors = successorList.get(currentNodeId) || [];
+        for (const successorId of successors) {
+            if (!worklist.includes(successorId)) {
+                worklist.push(successorId);
+            }
+        }
     }
   }
   
-  console.log('Order Status Calculation completed');
-
-  // Debug logging
-  console.log('Order Status Calculation Results (Rewritten):');
-  nodeStatusMap.forEach((statuses, nodeId) => {
-    if (statuses.size > 0) {
-      console.log(`  ${nodeId}: ${Array.from(statuses).join(', ')}`);
-    }
-  });
-
   return nodeStatusMap;
 };
 
@@ -213,7 +125,7 @@ export const calculatePossibleOrderStatuses = (data: GraphNode[]): Map<string, S
  * Gets formatted display text for possible order statuses
  */
 export const formatOrderStatuses = (statuses: Set<string>): string => {
-  if (statuses.size === 0) {
+  if (!statuses || statuses.size === 0) {
     return '';
   }
   
@@ -374,10 +286,12 @@ export const createEdgesForNode = (
     if (isNewNodeStructure(nextNode)) {
       edge = createEdgeFromNewStructure(node.nodeId, nextNode, data, highlightedPathToStartNodeIds);
     } else {
-      // Handle legacy structure
+      // Handle legacy and wait structures
       for (const [condition, target] of Object.entries(nextNode as Record<string, string>)) {
-        edge = createEdgeFromLegacyStructure(node.nodeId, condition, target, data, highlightedPathToStartNodeIds);
-        if (edge) edges.push(edge);
+        if (target) { // Ensure target is not null/undefined
+            edge = createEdgeFromLegacyStructure(node.nodeId, condition, target, data, highlightedPathToStartNodeIds);
+            if (edge) edges.push(edge);
+        }
       }
       continue; // Skip the edge push below for legacy structure
     }
@@ -459,13 +373,17 @@ export const shouldHighlightForOrderChange = (
   }
 
   return node.orderChanges.some((change) => {
-    if (!Object.keys(change.set).includes(highlightOrderChangeField)) {
+    const field = change.set[highlightOrderChangeField];
+    if (field === undefined) {
       return false;
     }
 
     // If a specific value is selected, check if the change matches that value
     if (highlightOrderChangeValue) {
-      return change.set[highlightOrderChangeField] === highlightOrderChangeValue;
+        if (Array.isArray(field)) {
+            return field.includes(highlightOrderChangeValue);
+        }
+        return field === highlightOrderChangeValue;
     }
 
     return true; // Otherwise, just check if the field exists
