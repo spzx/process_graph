@@ -8,6 +8,180 @@ import { GraphNode, FlowNode, FlowEdge } from '../types';
 import { EDGE_COLORS, LAYOUT_CONFIG, VISUAL_CONFIG, EdgeColorKey } from '../constants/graphVisualization';
 
 /**
+ * Calculates possible order statuses for each node based on incoming transitions
+ */
+export const calculatePossibleOrderStatuses = (data: GraphNode[]): Map<string, Set<string>> => {
+  const nodeStatusMap = new Map<string, Set<string>>();
+  
+  // Initialize all nodes with empty status sets
+  data.forEach(node => {
+    nodeStatusMap.set(node.nodeId, new Set<string>());
+  });
+
+  // Type for incoming transitions
+  type IncomingTransition = {
+    sourceNodeId: string;
+    condition: string;
+    orderChanges?: any[];
+  };
+
+  // Build a map of incoming transitions for each node
+  const incomingTransitions = new Map<string, IncomingTransition[]>();
+  
+  data.forEach(sourceNode => {
+    sourceNode.nextNodes.forEach(nextNode => {
+      let targetId: string;
+      let condition: string;
+      
+      if (typeof nextNode.on === 'string' && typeof nextNode.to === 'string') {
+        // New structure
+        condition = nextNode.on;
+        targetId = nextNode.to;
+      } else {
+        // Legacy structure
+        const entries = Object.entries(nextNode as Record<string, string>);
+        if (entries.length > 0) {
+          [condition, targetId] = entries[0];
+        } else {
+          return;
+        }
+      }
+
+      if (!incomingTransitions.has(targetId)) {
+        incomingTransitions.set(targetId, []);
+      }
+      
+      incomingTransitions.get(targetId)!.push({
+        sourceNodeId: sourceNode.nodeId,
+        condition,
+        orderChanges: sourceNode.orderChanges
+      });
+    });
+  });
+
+  // Function to recursively calculate statuses using DFS with cycle detection
+  const visited = new Set<string>();
+  const visiting = new Set<string>();
+  
+  const calculateNodeStatuses = (nodeId: string): Set<string> => {
+    if (visiting.has(nodeId)) {
+      // Cycle detected, return current known statuses
+      return nodeStatusMap.get(nodeId) || new Set();
+    }
+    
+    if (visited.has(nodeId)) {
+      return nodeStatusMap.get(nodeId) || new Set();
+    }
+
+    visiting.add(nodeId);
+    const nodeStatuses = nodeStatusMap.get(nodeId) || new Set<string>();
+    
+    const incoming = incomingTransitions.get(nodeId) || [];
+    
+    for (const transition of incoming) {
+      const sourceStatuses = calculateNodeStatuses(transition.sourceNodeId);
+      
+      // Find matching order changes for this transition condition
+      const matchingOrderChanges = transition.orderChanges?.filter(change => 
+        change.on === transition.condition
+      ) || [];
+      
+      // Look for order changes that modify order.status
+      const statusChangingOrderChanges = matchingOrderChanges.filter(change => 
+        change.set && change.set['order.status']
+      );
+      
+      if (statusChangingOrderChanges.length > 0) {
+        // Add statuses from order changes that modify order.status
+        statusChangingOrderChanges.forEach(change => {
+          const statusValue = change.set['order.status'];
+          if (Array.isArray(statusValue)) {
+            statusValue.forEach(status => nodeStatuses.add(status));
+          } else if (typeof statusValue === 'string') {
+            // Handle comma-separated values or single values
+            const statuses = statusValue.split(',').map(s => s.trim()).filter(s => s.length > 0);
+            statuses.forEach(status => nodeStatuses.add(status));
+          } else {
+            nodeStatuses.add(String(statusValue));
+          }
+        });
+      } else {
+        // No order changes that modify order.status, inherit from source node
+        sourceStatuses.forEach(status => nodeStatuses.add(status));
+      }
+    }
+    
+    // If no incoming transitions, check if this node is a start node with initial statuses
+    if (incoming.length === 0) {
+      const node = data.find(n => n.nodeId === nodeId);
+      if (node?.orderChanges) {
+        // Check if any order changes set initial order.status
+        const initialStatusChanges = node.orderChanges.filter(change => 
+          change.set && change.set['order.status']
+        );
+        
+        if (initialStatusChanges.length > 0) {
+          initialStatusChanges.forEach(change => {
+            const statusValue = change.set['order.status'];
+            if (Array.isArray(statusValue)) {
+              statusValue.forEach(status => nodeStatuses.add(status));
+            } else if (typeof statusValue === 'string') {
+              const statuses = statusValue.split(',').map(s => s.trim()).filter(s => s.length > 0);
+              statuses.forEach(status => nodeStatuses.add(status));
+            } else {
+              nodeStatuses.add(String(statusValue));
+            }
+          });
+        }
+      }
+    }
+    
+    visiting.delete(nodeId);
+    visited.add(nodeId);
+    
+    return nodeStatuses;
+  };
+  
+  // Calculate statuses for all nodes
+  data.forEach(node => {
+    calculateNodeStatuses(node.nodeId);
+  });
+  
+  // Debug logging (can be removed in production)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Order Status Calculation Results:');
+    nodeStatusMap.forEach((statuses, nodeId) => {
+      if (statuses.size > 0) {
+        console.log(`  ${nodeId}: ${Array.from(statuses).join(', ')}`);
+      }
+    });
+  }
+  
+  return nodeStatusMap;
+};
+
+/**
+ * Gets formatted display text for possible order statuses
+ */
+export const formatOrderStatuses = (statuses: Set<string>): string => {
+  if (statuses.size === 0) {
+    return '';
+  }
+  
+  const statusArray = Array.from(statuses).sort();
+  
+  if (statusArray.length === 1) {
+    return statusArray[0];
+  }
+  
+  if (statusArray.length <= 3) {
+    return statusArray.join(' | ');
+  }
+  
+  return `${statusArray.slice(0, 2).join(' | ')} +${statusArray.length - 2} more`;
+};
+
+/**
  * Validates if a node has the new data structure with 'on', 'to', 'description' fields
  */
 export const isNewNodeStructure = (nextNode: any): nextNode is { on: string; to: string; description: string } => {

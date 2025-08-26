@@ -1,6 +1,7 @@
-import React, { useRef } from 'react';
-import { X, Info, ChevronRight, GitCommit, Waypoints, Book, Code, Settings, AlertTriangle } from 'lucide-react';
+import React, { useRef, useMemo } from 'react';
+import { X, Info, ChevronRight, GitCommit, Waypoints, Book, Code, Settings, AlertTriangle, FileText } from 'lucide-react';
 import { GraphNode } from '../types';
+import { calculatePossibleOrderStatuses } from '../utils/graphUtils';
 
 interface NodeDetailsModalProps {
   node: GraphNode | null;
@@ -11,6 +12,14 @@ interface NodeDetailsModalProps {
   allNodes: GraphNode[];
 }
 
+// Move SectionTitle component outside to prevent re-creation on every render
+const SectionTitle: React.FC<{ icon: React.ReactNode; title: string; count?: number; color: string }> = ({ icon, title, count, color }) => (
+  <h4 className={`flex items-center space-x-2 text-base font-semibold ${color} mb-3`}>
+    {icon}
+    <span>{title} {count !== undefined && `(${count})`}</span>
+  </h4>
+);
+
 export const NodeDetailsModal: React.FC<NodeDetailsModalProps> = ({
   node,
   isOpen,
@@ -20,6 +29,13 @@ export const NodeDetailsModal: React.FC<NodeDetailsModalProps> = ({
   allNodes,
 }) => {
   const modalContentRef = useRef<HTMLDivElement>(null);
+
+  // Calculate possible order statuses for this node - must be called before early return
+  const possibleOrderStatuses = useMemo(() => {
+    if (!node) return [];
+    const orderStatusMap = calculatePossibleOrderStatuses(allNodes);
+    return Array.from(orderStatusMap.get(node.nodeId) || new Set<string>()).sort();
+  }, [node?.nodeId, allNodes]);
 
   if (!isOpen || !node) return null;
 
@@ -36,12 +52,7 @@ export const NodeDetailsModal: React.FC<NodeDetailsModalProps> = ({
   const hasConfigurationFlags = node.configurationFlags && node.configurationFlags.length > 0;
   const hasEdgeCases = node.edgeCases && node.edgeCases.length > 0;
 
-  const SectionTitle: React.FC<{ icon: React.ReactNode; title: string; count?: number; color: string }> = ({ icon, title, count, color }) => (
-    <h4 className={`flex items-center space-x-2 text-base font-semibold ${color} mb-3`}>
-      {icon}
-      <span>{title} {count !== undefined && `(${count})`}</span>
-    </h4>
-  );
+  const hasPossibleOrderStatuses = possibleOrderStatuses.length > 0;
 
   return (
     <div
@@ -84,6 +95,34 @@ export const NodeDetailsModal: React.FC<NodeDetailsModalProps> = ({
             <p className="text-sm font-medium text-gray-500 mb-1">Full Description</p>
             <p className="text-gray-800 text-base leading-relaxed">{node.description}</p>
           </div>
+
+          {/* Possible Order Statuses */}
+          {hasPossibleOrderStatuses && (
+            <div className="pt-6">
+              <SectionTitle
+                icon={<FileText className="w-5 h-5" />}
+                title="Possible Order Statuses"
+                count={possibleOrderStatuses.length}
+                color="text-blue-700"
+              />
+              <div className="border border-blue-200 rounded-lg p-4 bg-blue-50">
+                <div className="flex flex-wrap gap-2">
+                  {possibleOrderStatuses.map((status, index) => (
+                    <span 
+                      key={index} 
+                      className="inline-flex items-center px-3 py-1.5 bg-blue-100 text-blue-800 text-sm font-medium rounded-full border border-blue-200 shadow-sm"
+                    >
+                      {status}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-xs text-blue-600 mt-3 italic">
+                  These are the possible `order.status` values that can be set when this node is reached, 
+                  based on the flow paths and order changes in the graph.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Order Changes */}
           {hasOrderChanges && (

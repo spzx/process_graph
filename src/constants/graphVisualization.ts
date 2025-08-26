@@ -64,16 +64,16 @@ export const NODE_TYPE_COLORS = {
 export const LAYOUT_CONFIG = {
   direction: 'TB' as const,
   nodeSpacing: {
-    rankSep: 100,  // Vertical spacing between ranks
-    nodeSep: 70,   // Horizontal spacing between nodes
-    marginX: 30,   // Horizontal margin
-    marginY: 30,   // Vertical margin
+    rankSep: 150,  // Vertical spacing between ranks (increased from 100)
+    nodeSep: 100,  // Horizontal spacing between nodes (increased from 70)
+    marginX: 50,   // Horizontal margin (increased from 30)
+    marginY: 50,   // Vertical margin (increased from 30)
   },
   nodeSize: {
     width: 250,
     height: {
-      default: 100,
-      orderChange: 200,
+      default: 140,  // Increased from 100 to account for order status tags
+      orderChange: 240, // Increased from 200 to account for additional content
     },
   },
 } as const;

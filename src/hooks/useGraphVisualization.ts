@@ -10,7 +10,9 @@ import {
   shouldHighlightForOrderChange, 
   safeCreateEdges,
   calculateNodeCenter,
-  findStartNode
+  findStartNode,
+  calculatePossibleOrderStatuses,
+  formatOrderStatuses
 } from '../utils/graphUtils';
 import { ANIMATION_CONFIG } from '../constants/graphVisualization';
 
@@ -29,6 +31,9 @@ export const useGraphNodes = (
   return useMemo(() => {
     if (!data.length) return [];
 
+    // Calculate possible order statuses for all nodes
+    const orderStatusMap = calculatePossibleOrderStatuses(data);
+
     return data.map((node): FlowNode => {
       const isOrderChangeNode = shouldHighlightForOrderChange(
         node, 
@@ -39,6 +44,10 @@ export const useGraphNodes = (
       const isSearchedMatch = searchedNodeIds.includes(node.nodeId);
       const isPathToStartNode = highlightedPathToStartNodeIds?.has(node.nodeId) ?? false;
       const isPathHighlightActive = !!highlightedPathToStartNodeIds;
+
+      // Get possible order statuses for this node
+      const possibleOrderStatuses = orderStatusMap.get(node.nodeId) || new Set<string>();
+      const orderStatusDisplay = formatOrderStatuses(possibleOrderStatuses);
 
       return {
         id: node.nodeId,
@@ -64,6 +73,8 @@ export const useGraphNodes = (
           dependencies: node.dependencies,
           configurationFlags: node.configurationFlags,
           edgeCases: node.edgeCases,
+          possibleOrderStatuses: Array.from(possibleOrderStatuses),
+          orderStatusDisplay,
         },
       };
     });

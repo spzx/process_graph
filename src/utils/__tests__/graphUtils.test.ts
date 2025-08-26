@@ -14,6 +14,8 @@ import {
   calculateNodeCenter,
   findStartNode,
   safeCreateEdges,
+  calculatePossibleOrderStatuses,
+  formatOrderStatuses,
 } from '../graphUtils';
 import { GraphNode } from '../../types';
 
@@ -173,7 +175,7 @@ describe('graphUtils', () => {
       const center = calculateNodeCenter(node);
       
       expect(center.x).toBe(225); // 100 + 250/2
-      expect(center.y).toBe(250); // 200 + 100/2
+      expect(center.y).toBe(270); // 200 + 140/2 (updated from 100 to 140)
     });
 
     it('should calculate center correctly with custom dimensions', () => {
@@ -261,6 +263,218 @@ describe('graphUtils', () => {
       
       const edges = safeCreateEdges(malformedData, null);
       expect(edges).toEqual([]);
+    });
+  });
+
+  describe('calculatePossibleOrderStatuses', () => {
+    const testData: GraphNode[] = [
+      {
+        nodeId: 'start',
+        description: 'Start node',
+        shortDescription: 'Start',
+        nextNodes: [
+          { on: 'OK', to: 'middle', description: 'Go to middle' },
+          { on: 'NOK', to: 'error', description: 'Go to error' },
+        ],
+        orderChanges: [
+          {
+            on: 'OK',
+            set: { 'order.status': 'IN_PROGRESS' },
+          },
+          {
+            on: 'NOK',
+            set: { 'order.status': 'FAILED' },
+          },
+        ],
+      },
+      {
+        nodeId: 'middle',
+        description: 'Middle node - no order changes',
+        shortDescription: 'Middle',
+        nextNodes: [
+          { on: 'COMPLETE', to: 'end', description: 'Complete' },
+          { on: 'RETRY', to: 'processing', description: 'Retry processing' },
+        ],
+        // No orderChanges - should inherit IN_PROGRESS from start
+      },
+      {
+        nodeId: 'processing',
+        description: 'Processing node',
+        shortDescription: 'Processing',
+        nextNodes: [
+          { on: 'DONE', to: 'end', description: 'Processing done' },
+        ],
+        orderChanges: [
+          {
+            on: 'DONE',
+            set: { 'order.status': 'COMPLETED' },
+          },
+        ],
+      },
+      {
+        nodeId: 'end',
+        description: 'End node - inherits from multiple paths',
+        shortDescription: 'End',
+        nextNodes: [],
+        // No orderChanges - should inherit from both middle (IN_PROGRESS) and processing (COMPLETED)
+      },
+      {
+        nodeId: 'error',
+        description: 'Error node',
+        shortDescription: 'Error',
+        nextNodes: [],
+      },
+    ];
+
+    it('should calculate possible order statuses correctly with inheritance', () => {
+      const statusMap = calculatePossibleOrderStatuses(testData);
+      
+      // Middle node should inherit IN_PROGRESS status from start node
+      const middleStatuses = statusMap.get('middle');
+      expect(middleStatuses).toBeDefined();
+      expect(middleStatuses?.has('IN_PROGRESS')).toBe(true);
+      expect(middleStatuses?.size).toBe(1); // Only IN_PROGRESS
+      
+      // Processing node should inherit IN_PROGRESS from middle (since middle doesn't change status)
+      const processingStatuses = statusMap.get('processing');
+      expect(processingStatuses).toBeDefined();
+      expect(processingStatuses?.has('IN_PROGRESS')).toBe(true);
+      
+      // End node should inherit from both paths:
+      // - From middle->end: IN_PROGRESS (inherited from start)
+      // - From processing->end: COMPLETED (set by processing)
+      const endStatuses = statusMap.get('end');
+      expect(endStatuses).toBeDefined();
+      expect(endStatuses?.has('IN_PROGRESS')).toBe(true); // From middle path
+      expect(endStatuses?.has('COMPLETED')).toBe(true);   // From processing path
+      expect(endStatuses?.size).toBe(2); // Both statuses
+      
+      // Error node should have FAILED status from start node
+      const errorStatuses = statusMap.get('error');
+      expect(errorStatuses).toBeDefined();
+      expect(errorStatuses?.has('FAILED')).toBe(true);
+      expect(errorStatuses?.size).toBe(1); // Only FAILED
+    });
+
+    it('should handle nodes with no incoming transitions', () => {
+      const isolatedData: GraphNode[] = [
+        {
+          nodeId: 'isolated',
+          description: 'Isolated node',
+          shortDescription: 'Isolated',
+          nextNodes: [],
+          orderChanges: [
+            {
+              on: 'INIT',
+              set: { 'order.status': 'INITIAL' },
+            },
+          ],
+        },
+      ];
+      
+      const statusMap = calculatePossibleOrderStatuses(isolatedData);
+      const isolatedStatuses = statusMap.get('isolated');
+      
+      expect(isolatedStatuses).toBeDefined();
+      expect(isolatedStatuses?.has('INITIAL')).toBe(true);
+    });
+
+    it('should replace previous statuses when order changes modify order.status', () => {
+      const testDataWithReplacement: GraphNode[] = [
+        {
+          nodeId: 'start',
+          description: 'Start node',
+          shortDescription: 'Start',
+          nextNodes: [
+            { on: 'BEGIN', to: 'processing', description: 'Start processing' },
+          ],
+          orderChanges: [
+            {
+              on: 'BEGIN',
+              set: { 'order.status': 'IN_PROGRESS' },
+            },
+          ],
+        },
+        {
+          nodeId: 'processing',
+          description: 'Processing node that changes status',
+          shortDescription: 'Processing',
+          nextNodes: [
+            { on: 'SUCCESS', to: 'completed', description: 'Processing succeeded' },
+            { on: 'FAILURE', to: 'failed', description: 'Processing failed' },
+          ],
+          orderChanges: [
+            {
+              on: 'SUCCESS',
+              set: { 'order.status': 'COMPLETED' }, // This should REPLACE IN_PROGRESS
+            },
+            {
+              on: 'FAILURE',
+              set: { 'order.status': 'FAILED' }, // This should REPLACE IN_PROGRESS
+            },
+          ],
+        },
+        {
+          nodeId: 'completed',
+          description: 'Completed node',
+          shortDescription: 'Completed',
+          nextNodes: [],
+          // No orderChanges - should inherit COMPLETED from processing
+        },
+        {
+          nodeId: 'failed',
+          description: 'Failed node',
+          shortDescription: 'Failed',
+          nextNodes: [],
+          // No orderChanges - should inherit FAILED from processing
+        },
+      ];
+
+      const statusMap = calculatePossibleOrderStatuses(testDataWithReplacement);
+      
+      // Processing node should inherit IN_PROGRESS from start
+      const processingStatuses = statusMap.get('processing');
+      expect(processingStatuses).toBeDefined();
+      expect(processingStatuses?.has('IN_PROGRESS')).toBe(true);
+      expect(processingStatuses?.size).toBe(1); // Only inherited status
+      
+      // Completed node should have ONLY COMPLETED (not IN_PROGRESS)
+      // because processing node's SUCCESS order change REPLACES the previous status
+      const completedStatuses = statusMap.get('completed');
+      expect(completedStatuses).toBeDefined();
+      expect(completedStatuses?.has('COMPLETED')).toBe(true);
+      expect(completedStatuses?.has('IN_PROGRESS')).toBe(false); // Should NOT have this
+      expect(completedStatuses?.size).toBe(1); // Only the new status
+      
+      // Failed node should have ONLY FAILED (not IN_PROGRESS)
+      const failedStatuses = statusMap.get('failed');
+      expect(failedStatuses).toBeDefined();
+      expect(failedStatuses?.has('FAILED')).toBe(true);
+      expect(failedStatuses?.has('IN_PROGRESS')).toBe(false); // Should NOT have this
+      expect(failedStatuses?.size).toBe(1); // Only the new status
+    });
+  });
+
+  describe('formatOrderStatuses', () => {
+    it('should return empty string for empty set', () => {
+      const statuses = new Set<string>();
+      expect(formatOrderStatuses(statuses)).toBe('');
+    });
+
+    it('should return single status', () => {
+      const statuses = new Set(['COMPLETED']);
+      expect(formatOrderStatuses(statuses)).toBe('COMPLETED');
+    });
+
+    it('should join multiple statuses with pipe', () => {
+      const statuses = new Set(['COMPLETED', 'FAILED']);
+      expect(formatOrderStatuses(statuses)).toBe('COMPLETED | FAILED');
+    });
+
+    it('should truncate long lists', () => {
+      const statuses = new Set(['COMPLETED', 'FAILED', 'IN_PROGRESS', 'PENDING', 'CANCELLED']);
+      const result = formatOrderStatuses(statuses);
+      expect(result).toContain('+3 more');
     });
   });
 });

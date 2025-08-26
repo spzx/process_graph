@@ -134,6 +134,25 @@ export const CustomNode: React.FC<NodeProps<FlowNodeData>> = ({ data, selected }
 
         <p className="text-xs text-gray-600 line-clamp-2 mb-3">{data.shortDescription}</p>
 
+        {data.possibleOrderStatuses && data.possibleOrderStatuses.length > 0 && (
+          <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center space-x-1 mb-2">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <span className="text-xs font-medium text-blue-800">Possible Order Status:</span>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {data.possibleOrderStatuses.map((status: string, index: number) => (
+                <span 
+                  key={index} 
+                  className="inline-flex items-center px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-medium rounded border border-blue-200"
+                >
+                  {status}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         {isOrderChange && filteredOrderChanges && filteredOrderChanges.length > 0 && (
           <div className="mt-3 pt-3 border-t border-purple-200">
             <h4 className="text-xs font-semibold text-purple-700 mb-1">Order Changes:</h4>

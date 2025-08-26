@@ -73,6 +73,8 @@ export interface FlowNodeData {
   dependencies?: string[];
   configurationFlags?: ConfigurationFlag[];
   edgeCases?: string[];
+  possibleOrderStatuses?: string[];
+  orderStatusDisplay?: string;
 }
 
 export interface FlowEdge {
