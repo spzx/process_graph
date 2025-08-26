@@ -8,7 +8,8 @@ import { GraphNode, FlowNode, FlowEdge } from '../types';
 import { EDGE_COLORS, LAYOUT_CONFIG, VISUAL_CONFIG, EdgeColorKey } from '../constants/graphVisualization';
 
 /**
- * Calculates possible order statuses for each node based on incoming transitions
+ * Calculates possible order statuses for each node based on actual execution paths
+ * This implementation properly traces paths and excludes statuses from wait loops or divergent paths
  */
 export const calculatePossibleOrderStatuses = (data: GraphNode[]): Map<string, Set<string>> => {
   const nodeStatusMap = new Map<string, Set<string>>();
@@ -18,27 +19,23 @@ export const calculatePossibleOrderStatuses = (data: GraphNode[]): Map<string, S
     nodeStatusMap.set(node.nodeId, new Set<string>());
   });
 
-  // Type for incoming transitions
-  type IncomingTransition = {
-    sourceNodeId: string;
-    condition: string;
-    orderChanges?: any[];
-  };
-
-  // Build a map of incoming transitions for each node
-  const incomingTransitions = new Map<string, IncomingTransition[]>();
+  // Build adjacency list for forward traversal
+  const adjacencyList = new Map<string, Array<{targetId: string; condition: string}>>();
   
+  data.forEach(node => {
+    adjacencyList.set(node.nodeId, []);
+  });
+
+  // Populate adjacency list from nextNodes
   data.forEach(sourceNode => {
     sourceNode.nextNodes.forEach(nextNode => {
       let targetId: string;
       let condition: string;
       
       if (typeof nextNode.on === 'string' && typeof nextNode.to === 'string') {
-        // New structure
         condition = nextNode.on;
         targetId = nextNode.to;
       } else {
-        // Legacy structure
         const entries = Object.entries(nextNode as Record<string, string>);
         if (entries.length > 0) {
           [condition, targetId] = entries[0];
@@ -47,116 +44,168 @@ export const calculatePossibleOrderStatuses = (data: GraphNode[]): Map<string, S
         }
       }
 
-      if (!incomingTransitions.has(targetId)) {
-        incomingTransitions.set(targetId, []);
-      }
-      
-      incomingTransitions.get(targetId)!.push({
-        sourceNodeId: sourceNode.nodeId,
-        condition,
-        orderChanges: sourceNode.orderChanges
-      });
+      const connections = adjacencyList.get(sourceNode.nodeId) || [];
+      connections.push({targetId, condition});
+      adjacencyList.set(sourceNode.nodeId, connections);
     });
   });
 
-  // Function to recursively calculate statuses using DFS with cycle detection
-  const visited = new Set<string>();
-  const visiting = new Set<string>();
-  
-  const calculateNodeStatuses = (nodeId: string): Set<string> => {
-    if (visiting.has(nodeId)) {
-      // Cycle detected, return current known statuses
-      return nodeStatusMap.get(nodeId) || new Set();
-    }
+  /**
+   * Traces all valid execution paths to a target node
+   * Returns the possible statuses when reaching that node
+   */
+  const tracePathsToNode = (targetNodeId: string): Set<string> => {
+    const possibleStatuses = new Set<string>();
     
-    if (visited.has(nodeId)) {
-      return nodeStatusMap.get(nodeId) || new Set();
-    }
-
-    visiting.add(nodeId);
-    const nodeStatuses = nodeStatusMap.get(nodeId) || new Set<string>();
+    // Quick timeout check
+    const startTime = Date.now();
+    const TIMEOUT_MS = 2000; // 2 seconds per node
     
-    const incoming = incomingTransitions.get(nodeId) || [];
+    // Find start nodes (nodes with no incoming edges)
+    const hasIncomingEdge = new Set<string>();
+    data.forEach(node => {
+      const connections = adjacencyList.get(node.nodeId) || [];
+      connections.forEach(conn => hasIncomingEdge.add(conn.targetId));
+    });
     
-    for (const transition of incoming) {
-      const sourceStatuses = calculateNodeStatuses(transition.sourceNodeId);
+    const startNodes = data.filter(node => !hasIncomingEdge.has(node.nodeId));
+    const entryPoints = startNodes.length > 0 ? startNodes : [data[0]]; // Use first node if no clear entry
+    
+    // Simple BFS with limited depth
+    const queue: Array<{nodeId: string; pathStatuses: Set<string>; depth: number; visited: Set<string>}> = [];
+    const MAX_DEPTH = 15;
+    
+    // Initialize queue with entry points
+    entryPoints.forEach(entryNode => {
+      if (!entryNode) return;
       
-      // Find matching order changes for this transition condition
-      const matchingOrderChanges = transition.orderChanges?.filter(change => 
-        change.on === transition.condition
-      ) || [];
+      const initialStatuses = new Set<string>();
       
-      // Look for order changes that modify order.status
-      const statusChangingOrderChanges = matchingOrderChanges.filter(change => 
-        change.set && change.set['order.status']
-      );
-      
-      if (statusChangingOrderChanges.length > 0) {
-        // Add statuses from order changes that modify order.status
-        statusChangingOrderChanges.forEach(change => {
-          const statusValue = change.set['order.status'];
-          if (Array.isArray(statusValue)) {
-            statusValue.forEach(status => nodeStatuses.add(status));
-          } else if (typeof statusValue === 'string') {
-            // Handle comma-separated values or single values
-            const statuses = statusValue.split(',').map(s => s.trim()).filter(s => s.length > 0);
-            statuses.forEach(status => nodeStatuses.add(status));
-          } else {
-            nodeStatuses.add(String(statusValue));
+      // Get initial statuses from entry node
+      if (entryNode.orderChanges) {
+        entryNode.orderChanges.forEach(change => {
+          if (change.set && change.set['order.status']) {
+            const statusValue = change.set['order.status'];
+            if (typeof statusValue === 'string') {
+              initialStatuses.add(statusValue);
+            }
           }
         });
+      }
+      
+      if (entryNode.nodeId === targetNodeId) {
+        initialStatuses.forEach(status => possibleStatuses.add(status));
       } else {
-        // No order changes that modify order.status, inherit from source node
-        sourceStatuses.forEach(status => nodeStatuses.add(status));
-      }
-    }
-    
-    // If no incoming transitions, check if this node is a start node with initial statuses
-    if (incoming.length === 0) {
-      const node = data.find(n => n.nodeId === nodeId);
-      if (node?.orderChanges) {
-        // Check if any order changes set initial order.status
-        const initialStatusChanges = node.orderChanges.filter(change => 
-          change.set && change.set['order.status']
-        );
-        
-        if (initialStatusChanges.length > 0) {
-          initialStatusChanges.forEach(change => {
-            const statusValue = change.set['order.status'];
-            if (Array.isArray(statusValue)) {
-              statusValue.forEach(status => nodeStatuses.add(status));
-            } else if (typeof statusValue === 'string') {
-              const statuses = statusValue.split(',').map(s => s.trim()).filter(s => s.length > 0);
-              statuses.forEach(status => nodeStatuses.add(status));
-            } else {
-              nodeStatuses.add(String(statusValue));
-            }
-          });
-        }
-      }
-    }
-    
-    visiting.delete(nodeId);
-    visited.add(nodeId);
-    
-    return nodeStatuses;
-  };
-  
-  // Calculate statuses for all nodes
-  data.forEach(node => {
-    calculateNodeStatuses(node.nodeId);
-  });
-  
-  // Debug logging (can be removed in production)
-  if (process.env.NODE_ENV === 'development') {
-    console.log('Order Status Calculation Results:');
-    nodeStatusMap.forEach((statuses, nodeId) => {
-      if (statuses.size > 0) {
-        console.log(`  ${nodeId}: ${Array.from(statuses).join(', ')}`);
+        queue.push({
+          nodeId: entryNode.nodeId,
+          pathStatuses: initialStatuses,
+          depth: 0,
+          visited: new Set([entryNode.nodeId])
+        });
       }
     });
+    
+    // BFS traversal
+    while (queue.length > 0) {
+      // Timeout check
+      if (Date.now() - startTime > TIMEOUT_MS) {
+        console.warn(`Timeout reached for node ${targetNodeId}`);
+        break;
+      }
+      
+      const {nodeId, pathStatuses, depth, visited} = queue.shift()!;
+      
+      if (depth > MAX_DEPTH) {
+        continue;
+      }
+      
+      const currentNode = data.find(n => n.nodeId === nodeId);
+      if (!currentNode) continue;
+      
+      // Process outgoing edges
+      const connections = adjacencyList.get(nodeId) || [];
+      connections.forEach(({targetId, condition}) => {
+        // Avoid cycles
+        if (visited.has(targetId)) {
+          return;
+        }
+        
+        let nextStatuses = new Set(pathStatuses);
+        
+        // Check for order status changes
+        if (currentNode.orderChanges) {
+          const statusChanges = currentNode.orderChanges.filter(change => 
+            change.on === condition && change.set && change.set['order.status']
+          );
+          
+          if (statusChanges.length > 0) {
+            nextStatuses.clear();
+            statusChanges.forEach(change => {
+              const statusValue = change.set['order.status'];
+              if (typeof statusValue === 'string') {
+                nextStatuses.add(statusValue);
+              }
+            });
+          }
+        }
+        
+        if (targetId === targetNodeId) {
+          nextStatuses.forEach(status => possibleStatuses.add(status));
+        } else {
+          const newVisited = new Set(visited);
+          newVisited.add(targetId);
+          queue.push({
+            nodeId: targetId,
+            pathStatuses: nextStatuses,
+            depth: depth + 1,
+            visited: newVisited
+          });
+        }
+      });
+    }
+    
+    return possibleStatuses;
+  };
+
+  // Calculate statuses for all nodes with timeout
+  const globalStartTime = Date.now();
+  const GLOBAL_TIMEOUT_MS = 10000; // 10 seconds total
+  
+  console.log(`Calculating order statuses for ${data.length} nodes...`);
+  
+  for (let i = 0; i < data.length; i++) {
+    const node = data[i];
+    
+    // Check global timeout
+    if (Date.now() - globalStartTime > GLOBAL_TIMEOUT_MS) {
+      console.warn('Global timeout reached, stopping calculation');
+      break;
+    }
+    
+    // Progress logging for large datasets
+    if (i % 20 === 0 && i > 0) {
+      console.log(`Progress: ${i}/${data.length} nodes processed`);
+    }
+    
+    try {
+      const statuses = tracePathsToNode(node.nodeId);
+      nodeStatusMap.set(node.nodeId, statuses);
+    } catch (error) {
+      console.warn(`Error processing node ${node.nodeId}:`, error);
+      // Continue with empty status set
+    }
   }
   
+  console.log('Order Status Calculation completed');
+
+  // Debug logging
+  console.log('Order Status Calculation Results (Rewritten):');
+  nodeStatusMap.forEach((statuses, nodeId) => {
+    if (statuses.size > 0) {
+      console.log(`  ${nodeId}: ${Array.from(statuses).join(', ')}`);
+    }
+  });
+
   return nodeStatusMap;
 };
 

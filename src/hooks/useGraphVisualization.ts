@@ -2,7 +2,7 @@
  * Custom hooks for graph visualization logic
  */
 
-import { useMemo, useCallback, useEffect, useRef } from 'react';
+import { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { useReactFlow } from 'reactflow';
 import { GraphNode, FlowNode, FlowEdge } from '../types';
 import { 
@@ -108,10 +108,16 @@ export const useGraphEdges = (
 export const useGraphLayout = (
   nodes: FlowNode[],
   edges: FlowEdge[],
-  layoutDirection: string = 'TB'
+  layoutDirection: string = 'TB',
+  preserveUserPositions: boolean = false
 ): { layoutedNodes: FlowNode[]; layoutedEdges: FlowEdge[] } => {
   return useMemo(() => {
     if (!nodes.length) return { layoutedNodes: [], layoutedEdges: [] };
+    
+    // If preserveUserPositions is true, return nodes as-is without layout
+    if (preserveUserPositions) {
+      return { layoutedNodes: nodes, layoutedEdges: edges };
+    }
     
     const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
       nodes, 
@@ -120,7 +126,7 @@ export const useGraphLayout = (
     );
     
     return { layoutedNodes, layoutedEdges };
-  }, [nodes, edges, layoutDirection]);
+  }, [nodes, edges, layoutDirection, preserveUserPositions]);
 };
 
 /**
@@ -142,13 +148,15 @@ export const useGraphNavigation = (
     // Mark as initialized to prevent repeated calls
     hasInitialized.current = true;
 
-    // Always fit view initially for overview
-    fitView({ 
-      duration: ANIMATION_CONFIG.fitView.duration, 
-      padding: ANIMATION_CONFIG.fitView.padding 
-    });
+    // First, fit the entire view to show all nodes
+    setTimeout(() => {
+      fitView({ 
+        duration: ANIMATION_CONFIG.fitView.duration, 
+        padding: ANIMATION_CONFIG.fitView.padding 
+      });
+    }, 100); // Small delay to ensure nodes are rendered
 
-    // Optional: Center on start node after a short delay to allow fitView to complete
+    // Then, after fitView completes, center on start node with better zoom
     setTimeout(() => {
       const startNode = findStartNode(data);
       if (startNode) {
@@ -158,12 +166,12 @@ export const useGraphNavigation = (
           setCenter(
             center.x, 
             center.y, 
-            ANIMATION_CONFIG.initialCenter.zoom, 
-            { duration: ANIMATION_CONFIG.initialCenter.duration }
+            ANIMATION_CONFIG.centerNode.zoom, // Use centerNode zoom for better focus
+            { duration: ANIMATION_CONFIG.centerNode.duration }
           );
         }
       }
-    }, ANIMATION_CONFIG.fitView.duration + 100); // Wait for fitView to complete
+    }, ANIMATION_CONFIG.fitView.duration + 200); // Wait for fitView to complete plus buffer
   }, [initialNodes, data, fitView, setCenter]);
 
   // Center on selected node - only when selection actually changes
@@ -207,6 +215,17 @@ export const useGraphState = (
   isSearchActive: boolean = false,
   highlightedPathToStartNodeIds: Set<string> | null = null
 ) => {
+  const [hasUserMovedNodes, setHasUserMovedNodes] = useState(false);
+  const lastDataLength = useRef(0);
+  
+  // Reset user moved flag when data changes
+  useEffect(() => {
+    if (data.length !== lastDataLength.current) {
+      setHasUserMovedNodes(false);
+      lastDataLength.current = data.length;
+    }
+  }, [data.length]);
+
   // Process nodes
   const nodes = useGraphNodes(
     data,
@@ -221,8 +240,8 @@ export const useGraphState = (
   // Process edges
   const edges = useGraphEdges(data, highlightedPathToStartNodeIds);
 
-  // Apply layout
-  const { layoutedNodes, layoutedEdges } = useGraphLayout(nodes, edges);
+  // Apply layout (preserve positions if user has moved nodes)
+  const { layoutedNodes, layoutedEdges } = useGraphLayout(nodes, edges, 'TB', hasUserMovedNodes);
 
   // Navigation helpers
   const navigation = useGraphNavigation(layoutedNodes, data, selectedNodeId);
@@ -232,6 +251,7 @@ export const useGraphState = (
     edges: layoutedEdges,
     navigation,
     hasData: data.length > 0,
+    onUserMoveNodes: () => setHasUserMovedNodes(true),
   };
 };
 

@@ -3,7 +3,7 @@
  * Features: Better error handling, performance optimization, accessibility
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -78,7 +78,7 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
   }, [data, onError]);
 
   // Process graph data using custom hooks
-  const { nodes, edges, navigation, hasData } = useGraphState(
+  const { nodes, edges, navigation, hasData, onUserMoveNodes } = useGraphState(
     data,
     selectedNodeId,
     highlightOrderChangeField,
@@ -91,6 +91,20 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
   // React Flow state management
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState(nodes);
   const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState(edges);
+
+  // Enhanced onNodesChange to track user movements
+  const handleNodesChange = useCallback((changes: any[]) => {
+    // Check if any change is a position change (user dragging)
+    const hasPositionChange = changes.some(change => 
+      change.type === 'position' && change.dragging === false
+    );
+    
+    if (hasPositionChange) {
+      onUserMoveNodes();
+    }
+    
+    onNodesChange(changes);
+  }, [onNodesChange, onUserMoveNodes]);
 
   // Event handlers
   const handleNodeClick = useNodeClick(data, onNodeSelect);
@@ -164,7 +178,7 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
-        onNodesChange={onNodesChange}
+        onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
         nodeTypes={nodeTypes}
