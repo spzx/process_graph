@@ -1,12 +1,9 @@
 /**
- * GraphVisualization Component - Final Corrected Version
+ * GraphVisualization Component - Final Version with ElkJS Automated Layout
  *
- * This component displays graph data using React Flow and includes several key fixes:
- * 1.  Uses `useNodesState` and `useEdgesState` for robust state management, preventing race conditions.
- * 2.  Separates data synchronization and UI effects (like initial centering) into distinct `useEffect`
- *     hooks with correct dependencies, resolving stale state issues that prevented rendering.
- * 3.  Explicitly passes props to `<ReactFlow>` to avoid console warnings about unrecognized attributes.
- * 4.  Preserves user-dragged node positions across data refreshes for a better user experience.
+ * This version uses the advanced ElkJS layout engine for superior node placement and edge routing.
+ * It handles the asynchronous nature of ElkJS and programmatically fits the view once the layout is complete.
+ * This is the recommended final implementation for achieving a high-quality, aesthetically pleasing graph.
  */
 import React, { useEffect, useState, useMemo } from 'react';
 import ReactFlow, {
@@ -16,7 +13,8 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
   ConnectionMode,
-  Viewport,
+  useReactFlow,
+  ReactFlowProvider,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -24,14 +22,14 @@ import { CustomNode } from './CustomNode';
 import { CustomEdge } from './CustomEdge';
 import { PerformanceMonitor } from './PerformanceMonitor';
 import { GraphNode } from '../types';
-import type { FlowNode, FlowEdge } from '../types';
 import {
   useGraphState,
   useNodeClick,
   useMinimapNodeColor,
 } from '../hooks/useGraphVisualization';
-import { useLargeGraphOptimization, useAdaptivePerformanceSettings } from '../hooks/useLargeGraphOptimization';
+import { useAdaptivePerformanceSettings } from '../hooks/useLargeGraphOptimization';
 import { safeValidateGraph } from '../utils/validation';
+import { getLayoutedElements } from '../utils/layout'; // This should now be the ElkJS version
 import {
   ERROR_MESSAGES,
   ACCESSIBILITY_LABELS,
@@ -50,122 +48,126 @@ interface GraphVisualizationProps {
   showPerformanceMonitor?: boolean;
 }
 
-export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
-  data,
-  onNodeSelect,
-  selectedNodeId,
-  highlightOrderChangeField = 'none',
-  highlightOrderChangeValue = null,
-  searchedNodeIds = [],
-  isSearchActive = false,
-  highlightedPathToStartNodeIds = null,
-  onError,
-  showPerformanceMonitor = process.env.NODE_ENV === 'development',
-}) => {
-  const [validationError, setValidationError] = useState<string | null>(null);
-  const [hasInitialCentered, setHasInitialCentered] = useState(false);
-  const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 0.8 });
-  const [isLargeGraph, setIsLargeGraph] = useState(false);
-
+// Internal component that renders the graph and uses hooks requiring ReactFlowProvider context.
+const GraphLayoutWrapper: React.FC<GraphVisualizationProps> = (props) => {
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState([]);
   const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState([]);
-
-  useEffect(() => {
-    setIsLargeGraph(data.length > 100);
-  }, [data.length]);
-
-  const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
-  const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
-
-  useEffect(() => {
-    if (data.length > 0) {
-      const validation = safeValidateGraph(data);
-      if (!validation.isValid) {
-        const errorMessage = validation.errors[0] || 'Invalid graph data';
-        setValidationError(errorMessage);
-        onError?.(new Error(errorMessage), 'data-validation');
-        return;
-      }
-      setValidationError(null);
-    }
-  }, [data, onError]);
+  const [isLaidOut, setIsLaidOut] = useState(false);
+  const { fitView } = useReactFlow();
 
   const {
     nodes: processedNodes,
     edges: processedEdges,
-    navigation,
-    hasData,
   } = useGraphState(
-    data,
-    selectedNodeId,
-    highlightOrderChangeField,
-    highlightOrderChangeValue,
-    searchedNodeIds,
-    isSearchActive,
-    highlightedPathToStartNodeIds,
+    props.data,
+    props.selectedNodeId,
+    props.highlightOrderChangeField,
+    props.highlightOrderChangeValue,
+    props.searchedNodeIds,
+    props.isSearchActive,
+    props.highlightedPathToStartNodeIds,
   );
 
-  const optimizedGraph = useLargeGraphOptimization({
-    nodes: processedNodes,
-    edges: processedEdges,
-    viewport,
-    isLargeGraph,
-  });
+  // This useEffect handles the asynchronous layout calculation from ElkJS.
+  useEffect(() => {
+    // Only run the layout if there are nodes to process.
+    if (processedNodes.length > 0) {
+      // getLayoutedElements is now async and returns a Promise.
+      getLayoutedElements(processedNodes, processedEdges).then(layoutedNodes => {
+        setFlowNodes(layoutedNodes);
+        setFlowEdges(processedEdges);
+        // Set a flag to true to trigger the fitView effect once nodes are in state.
+        setIsLaidOut(true);
+      }).catch(error => {
+        console.error("Layout calculation failed:", error);
+        // Fallback to un-layouted nodes if ElkJS fails
+        setFlowNodes(processedNodes);
+        setFlowEdges(processedEdges);
+      });
+    } else {
+      // Clear the graph if the data is empty.
+      setFlowNodes([]);
+      setFlowEdges([]);
+      setIsLaidOut(false);
+    }
+  }, [processedNodes, processedEdges, setFlowNodes, setFlowEdges]);
+
+  // This effect runs once after the initial layout is complete to fit the graph into view.
+  useEffect(() => {
+    if (isLaidOut) {
+      // A small timeout allows React Flow to render the nodes before we try to fit them.
+      const timer = setTimeout(() => {
+        fitView({ padding: 0.1, duration: 300 });
+      }, 100);
+      
+      // Reset the flag to prevent re-fitting on subsequent re-renders.
+      setIsLaidOut(false); 
+      return () => clearTimeout(timer);
+    }
+  }, [isLaidOut, fitView]);
   
-  const adaptiveSettings = useAdaptivePerformanceSettings(data.length);
-
-  const finalNodes = isLargeGraph ? optimizedGraph.visibleNodes : processedNodes;
-  const finalEdges = isLargeGraph ? optimizedGraph.visibleEdges : processedEdges;
-
-  // EFFECT 1: Synchronize processed data with React Flow's internal state.
-  // This hook's only job is to update the graph when the source data changes.
-  useEffect(() => {
-    // Using a functional update (`(currentNodes) => ...`) ensures we always have the latest
-    // state to compare against, avoiding stale state issues without adding `flowNodes`
-    // to the dependency array, which would cause an infinite loop.
-    setFlowNodes((currentFlowNodes) => {
-      const positionMap = new Map(currentFlowNodes.map(n => [n.id, n.position]));
-      return finalNodes.map(newNode => ({
-        ...newNode,
-        position: positionMap.get(newNode.id) || newNode.position,
-      }));
-    });
-    setFlowEdges(finalEdges);
-  }, [finalNodes, finalEdges, setFlowNodes, setFlowEdges]);
-
-  // EFFECT 2: Handle the initial view centering.
-  // This hook runs *after* the nodes are successfully loaded into the state.
-  useEffect(() => {
-    if (flowNodes.length > 0 && !hasInitialCentered) {
-      try {
-        navigation.centerOnStart();
-        setHasInitialCentered(true);
-      } catch (error) {
-        console.warn('Error during initial centering:', error);
-        onError?.(error as Error, 'navigation');
-      }
-    } else if (data.length === 0) {
-      // Reset the flag if the data is cleared, so it can center again on new data.
-      setHasInitialCentered(false);
-    }
-  }, [flowNodes.length, hasInitialCentered, navigation, data.length, onError]);
-
-  // Event handlers and other effects
-  const handleNodeClick = useNodeClick(data, onNodeSelect);
+  // Memoize event handlers and other props to optimize performance.
+  const handleNodeClick = useNodeClick(props.data, props.onNodeSelect);
   const getMinimapNodeColor = useMinimapNodeColor();
+  const adaptiveSettings = useAdaptivePerformanceSettings(props.data.length);
+  const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
+  const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
+
+  return (
+    <div className="h-full w-full relative" role="application">
+        <div className="absolute top-2 left-2 bg-yellow-100 border border-yellow-400 p-2 text-xs z-50 rounded shadow-lg">
+            <div>Prop data: {props.data.length}</div>
+            <div>React Flow nodes (rendered): {flowNodes.length}</div>
+        </div>
+        <ReactFlow
+            nodes={flowNodes}
+            edges={flowEdges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onNodeClick={handleNodeClick}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            connectionMode={ConnectionMode.Loose}
+            className="bg-gray-50"
+            proOptions={{ hideAttribution: true }}
+            minZoom={0.1}
+            maxZoom={2}
+            nodesDraggable={true}
+            nodesConnectable={false}
+            elementsSelectable={true}
+            deleteKeyCode={null}
+            {...adaptiveSettings} // Spread valid performance settings
+        >
+            <Background color="#e5e7eb" size={1} />
+            <Controls />
+            <MiniMap nodeColor={getMinimapNodeColor} />
+        </ReactFlow>
+        <PerformanceMonitor
+            nodeCount={flowNodes.length}
+            edgeCount={flowEdges.length}
+            enabled={props.showPerformanceMonitor}
+        />
+    </div>
+  );
+};
+
+// Main export component that handles validation and provides the ReactFlowProvider.
+export const GraphVisualization: React.FC<GraphVisualizationProps> = (props) => {
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (selectedNodeId) {
-      try {
-        navigation.centerOnSelected();
-      } catch (error) {
-        console.warn('Error centering on selected node:', error);
-        onError?.(error as Error, 'node-selection');
+    if (props.data.length > 0) {
+      const validation = safeValidateGraph(props.data);
+      if (!validation.isValid) {
+        const errorMessage = validation.errors[0] || 'Invalid graph data';
+        setValidationError(errorMessage);
+        props.onError?.(new Error(errorMessage), 'data-validation');
+        return;
       }
+      setValidationError(null);
     }
-  }, [selectedNodeId, navigation, onError]);
+  }, [props.data, props.onError]);
 
-  // Render logic (error states, loading, etc.)
   if (validationError) {
     return (
       <div className="h-full flex items-center justify-center text-red-600 bg-red-50 border border-red-200 rounded-lg" role="alert">
@@ -177,78 +179,18 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
     );
   }
 
-  if (!hasData && data.length > 0) {
-    return (
-      <div className="h-full flex items-center justify-center text-gray-500" role="status">
-        <p>Processing graph data...</p>
-      </div>
-    );
-  }
-
-  if (!hasData) {
-    return (
+  if (props.data.length === 0) {
+     return (
       <div className="h-full flex items-center justify-center text-gray-500" role="status">
         <p>{ERROR_MESSAGES.NO_DATA}</p>
       </div>
     );
   }
 
+  // The ReactFlowProvider is essential for the `useReactFlow` hook (like `fitView`) to work.
   return (
-    <div className="h-full w-full relative" role="application" aria-label={ACCESSIBILITY_LABELS.graphContainer}>
-      {/* Debug overlay - can be removed in production */}
-      <div className="absolute top-2 left-2 bg-yellow-100 border border-yellow-400 p-2 text-xs z-50 rounded shadow-lg">
-        <div>Prop data: {data.length}</div>
-        <div>Processed nodes: {processedNodes.length}</div>
-        <div>React Flow nodes (rendered): {flowNodes.length}</div>
-        <div>hasData: {hasData.toString()}</div>
-      </div>
-      
-      <ReactFlow
-        nodes={flowNodes}
-        edges={flowEdges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onNodeClick={handleNodeClick}
-        onMove={(_, viewport) => setViewport(viewport)}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        connectionMode={ConnectionMode.Loose}
-        className="bg-gray-50"
-        attributionPosition="bottom-left"
-        // Performance & Usability
-        minZoom={0.1}
-        maxZoom={2}
-        defaultViewport={viewport}
-        onlyRenderVisibleElements
-        nodesDraggable={true}
-        nodesConnectable={false}
-        elementsSelectable={true}
-        proOptions={{ hideAttribution: true }}
-        fitViewOptions={{ padding: 0.1 }}
-        deleteKeyCode={null}
-        
-        // FIX: Apply adaptive settings explicitly to avoid passing unknown props to the DOM.
-        zoomOnScroll={adaptiveSettings.zoomOnScroll}
-        zoomOnPinch={adaptiveSettings.zoomOnPinch}
-        panOnDrag={adaptiveSettings.panOnDrag}
-        selectNodesOnDrag={adaptiveSettings.selectNodesOnDrag}
-        elevateNodesOnSelect={adaptiveSettings.elevateNodesOnSelect}
-      >
-        <Background color="#e5e7eb" size={1} aria-label={ACCESSIBILITY_LABELS.background} />
-        <Controls className="!bg-white !border !border-gray-200 !shadow-lg !rounded-lg" aria-label={ACCESSIBILITY_LABELS.controls} />
-        <MiniMap
-          className="!bg-white !border !border-gray-200 !shadow-lg !rounded-lg"
-          nodeColor={getMinimapNodeColor}
-          maskColor="rgba(255, 255, 255, 0.8)"
-          aria-label={ACCESSIBILITY_LABELS.minimap}
-        />
-      </ReactFlow>
-
-      <PerformanceMonitor
-        nodeCount={flowNodes.length}
-        edgeCount={flowEdges.length}
-        enabled={showPerformanceMonitor}
-      />
-    </div>
+    <ReactFlowProvider>
+      <GraphLayoutWrapper {...props} />
+    </ReactFlowProvider>
   );
 };

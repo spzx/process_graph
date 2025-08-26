@@ -153,7 +153,7 @@ export const CustomNode = React.memo<NodeProps<FlowNodeData>>(({ data, selected 
                   <span className="text-xs font-medium text-blue-800">Possible Order Status:</span>
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {data.possibleOrderStatuses.slice(0, isLargeGraphMode ? 3 : 10).map((status: string, index: number) => (
+                  {data.possibleOrderStatuses.slice(0, isLargeGraphMode ? 3 : 5).map((status: string, index: number) => (
                     <span 
                       key={index} 
                       className="inline-flex items-center px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-medium rounded border border-blue-200"
