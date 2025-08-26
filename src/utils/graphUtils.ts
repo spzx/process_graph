@@ -70,9 +70,19 @@ export const calculatePossibleOrderStatuses = (data: GraphNode[]): Map<string, S
     const predecessors = predecessorList.get(currentNodeId) || [];
 
     if (predecessors.length === 0) {
-      // Start nodes have no predecessors, so their status set is initially empty unless they set one themselves.
-      // This is handled by the logic below which checks for status changes on edges.
-      // For this algorithm, we focus on what flows *into* a node. For a start node, nothing flows in.
+      // Start nodes have no predecessors. Check if this node sets its own initial status.
+      const initialStatusChanges = (currentNode.orderChanges || []).filter(
+        change => change.set && change.set['order.status']
+      );
+      
+      for (const change of initialStatusChanges) {
+        const statusValue = change.set['order.status'];
+        if (Array.isArray(statusValue)) {
+          statusValue.forEach(s => newStatuses.add(s));
+        } else if (typeof statusValue === 'string') {
+          newStatuses.add(statusValue);
+        }
+      }
     } else {
         for (const { sourceId, condition } of predecessors) {
             const sourceNode = data.find(n => n.nodeId === sourceId)!;

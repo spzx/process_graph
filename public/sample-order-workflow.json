@@ -1,0 +1,269 @@
+[
+  {
+    "nodeId": "start",
+    "type": "start",
+    "shortDescription": "Order Received",
+    "description": "Initial order processing starts when customer order is received",
+    "businessPurpose": "Entry point for order fulfillment workflow",
+    "orderChanges": [
+      {
+        "on": "success",
+        "set": {
+          "order.status": "RECEIVED"
+        }
+      }
+    ],
+    "nextNodes": [
+      {
+        "on": "success",
+        "to": "validate_order",
+        "description": "Proceed to order validation"
+      }
+    ]
+  },
+  {
+    "nodeId": "validate_order",
+    "type": "action",
+    "shortDescription": "Validate Order",
+    "description": "Validate order details, customer information, and item availability",
+    "businessPurpose": "Ensure order integrity before processing",
+    "orderChanges": [
+      {
+        "on": "success",
+        "set": {
+          "order.status": "VALIDATED"
+        }
+      },
+      {
+        "on": "fail",
+        "set": {
+          "order.status": "VALIDATION_FAILED"
+        }
+      }
+    ],
+    "nextNodes": [
+      {
+        "on": "success",
+        "to": "check_inventory",
+        "description": "Proceed to inventory check"
+      },
+      {
+        "on": "fail",
+        "to": "handle_validation_error",
+        "description": "Handle validation errors"
+      }
+    ]
+  },
+  {
+    "nodeId": "check_inventory",
+    "type": "action",
+    "shortDescription": "Check Inventory",
+    "description": "Verify item availability and reserve inventory",
+    "businessPurpose": "Ensure items are available before payment processing",
+    "orderChanges": [
+      {
+        "on": "success",
+        "set": {
+          "order.status": "INVENTORY_RESERVED"
+        }
+      },
+      {
+        "on": "fail",
+        "set": {
+          "order.status": "OUT_OF_STOCK"
+        }
+      }
+    ],
+    "nextNodes": [
+      {
+        "on": "success",
+        "to": "process_payment",
+        "description": "Proceed to payment processing"
+      },
+      {
+        "on": "fail",
+        "to": "notify_out_of_stock",
+        "description": "Handle out of stock scenario"
+      }
+    ]
+  },
+  {
+    "nodeId": "process_payment",
+    "type": "action",
+    "shortDescription": "Process Payment",
+    "description": "Charge customer payment method and process transaction",
+    "businessPurpose": "Collect payment for the order",
+    "orderChanges": [
+      {
+        "on": "success",
+        "set": {
+          "order.status": "PAYMENT_PROCESSED"
+        }
+      },
+      {
+        "on": "fail",
+        "set": {
+          "order.status": "PAYMENT_FAILED"
+        }
+      }
+    ],
+    "nextNodes": [
+      {
+        "on": "success",
+        "to": "fulfill_order",
+        "description": "Proceed to order fulfillment"
+      },
+      {
+        "on": "fail",
+        "to": "handle_payment_failure",
+        "description": "Handle payment failure"
+      }
+    ]
+  },
+  {
+    "nodeId": "fulfill_order",
+    "type": "action",
+    "shortDescription": "Fulfill Order",
+    "description": "Pick, pack, and ship the order to customer",
+    "businessPurpose": "Complete order delivery to customer",
+    "orderChanges": [
+      {
+        "on": "success",
+        "set": {
+          "order.status": "SHIPPED"
+        }
+      }
+    ],
+    "nextNodes": [
+      {
+        "on": "success",
+        "to": "order_complete",
+        "description": "Order completed successfully"
+      }
+    ]
+  },
+  {
+    "nodeId": "order_complete",
+    "type": "end",
+    "shortDescription": "Order Complete",
+    "description": "Order has been successfully processed and delivered",
+    "businessPurpose": "Final state indicating successful order completion",
+    "orderChanges": [
+      {
+        "on": "success",
+        "set": {
+          "order.status": "COMPLETED"
+        }
+      }
+    ],
+    "nextNodes": []
+  },
+  {
+    "nodeId": "handle_validation_error",
+    "type": "action",
+    "shortDescription": "Handle Validation Error",
+    "description": "Process order validation failures and notify customer",
+    "businessPurpose": "Manage validation failures gracefully",
+    "orderChanges": [
+      {
+        "on": "success",
+        "set": {
+          "order.status": "CANCELLED"
+        }
+      }
+    ],
+    "nextNodes": [
+      {
+        "on": "success",
+        "to": "order_cancelled",
+        "description": "Order cancelled due to validation failure"
+      }
+    ]
+  },
+  {
+    "nodeId": "notify_out_of_stock",
+    "type": "action",
+    "shortDescription": "Notify Out of Stock",
+    "description": "Inform customer about inventory shortage and offer alternatives",
+    "businessPurpose": "Manage inventory shortage scenarios",
+    "orderChanges": [
+      {
+        "on": "success",
+        "set": {
+          "order.status": "BACKORDERED"
+        }
+      }
+    ],
+    "nextNodes": [
+      {
+        "on": "success",
+        "to": "wait_for_restock",
+        "description": "Wait for inventory replenishment"
+      }
+    ]
+  },
+  {
+    "nodeId": "handle_payment_failure",
+    "type": "action",
+    "shortDescription": "Handle Payment Failure",
+    "description": "Process payment failures and attempt retry or alternative payment",
+    "businessPurpose": "Recover from payment processing issues",
+    "orderChanges": [
+      {
+        "on": "retry",
+        "set": {
+          "order.status": "PAYMENT_RETRY"
+        }
+      },
+      {
+        "on": "fail",
+        "set": {
+          "order.status": "CANCELLED"
+        }
+      }
+    ],
+    "nextNodes": [
+      {
+        "on": "retry",
+        "to": "process_payment",
+        "description": "Retry payment processing"
+      },
+      {
+        "on": "fail",
+        "to": "order_cancelled",
+        "description": "Cancel order due to payment failure"
+      }
+    ]
+  },
+  {
+    "nodeId": "wait_for_restock",
+    "type": "wait",
+    "shortDescription": "Wait for Restock",
+    "description": "Monitor inventory levels and resume processing when items are available",
+    "businessPurpose": "Handle backorder situations",
+    "orderChanges": [
+      {
+        "on": "success",
+        "set": {
+          "order.status": "INVENTORY_AVAILABLE"
+        }
+      }
+    ],
+    "nextNodes": [
+      {
+        "on": "success",
+        "to": "check_inventory",
+        "description": "Re-check inventory when restocked"
+      }
+    ]
+  },
+  {
+    "nodeId": "order_cancelled",
+    "type": "end",
+    "shortDescription": "Order Cancelled",
+    "description": "Order was cancelled due to validation or payment issues",
+    "businessPurpose": "Terminal state for cancelled orders",
+    "orderChanges": [],
+    "nextNodes": []
+  }
+]

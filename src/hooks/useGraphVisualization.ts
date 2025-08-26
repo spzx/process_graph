@@ -28,11 +28,17 @@ export const useGraphNodes = (
   isSearchActive: boolean = false,
   highlightedPathToStartNodeIds: Set<string> | null = null
 ): FlowNode[] => {
+  // Memoize the expensive order status calculation
+  const orderStatusMap = useMemo(() => {
+    if (!data.length) return new Map<string, Set<string>>();
+    console.time('Order Status Calculation');
+    const result = calculatePossibleOrderStatuses(data);
+    console.timeEnd('Order Status Calculation');
+    return result;
+  }, [data]); // Only recalculate when data actually changes
+
   return useMemo(() => {
     if (!data.length) return [];
-
-    // Calculate possible order statuses for all nodes
-    const orderStatusMap = calculatePossibleOrderStatuses(data);
 
     return data.map((node): FlowNode => {
       const isOrderChangeNode = shouldHighlightForOrderChange(
@@ -80,6 +86,7 @@ export const useGraphNodes = (
     });
   }, [
     data, 
+    orderStatusMap, // Use memoized order status map
     selectedNodeId, 
     highlightOrderChangeField, 
     highlightOrderChangeValue, 
@@ -109,14 +116,32 @@ export const useGraphLayout = (
   nodes: FlowNode[],
   edges: FlowEdge[],
   layoutDirection: string = 'TB',
-  preserveUserPositions: boolean = false
+  preserveUserPositions: boolean = false,
+  existingNodes?: FlowNode[]
 ): { layoutedNodes: FlowNode[]; layoutedEdges: FlowEdge[] } => {
   return useMemo(() => {
     if (!nodes.length) return { layoutedNodes: [], layoutedEdges: [] };
     
-    // If preserveUserPositions is true, return nodes as-is without layout
-    if (preserveUserPositions) {
-      return { layoutedNodes: nodes, layoutedEdges: edges };
+    // If preserveUserPositions is true and we have existing nodes, preserve their positions
+    if (preserveUserPositions && existingNodes && existingNodes.length > 0) {
+      const existingPositions = new Map<string, { x: number; y: number }>();
+      existingNodes.forEach(node => {
+        existingPositions.set(node.id, node.position);
+      });
+      
+      // Apply preserved positions to new nodes
+      const nodesWithPreservedPositions = nodes.map(node => {
+        const preservedPosition = existingPositions.get(node.id);
+        if (preservedPosition) {
+          return {
+            ...node,
+            position: preservedPosition
+          };
+        }
+        return node;
+      });
+      
+      return { layoutedNodes: nodesWithPreservedPositions, layoutedEdges: edges };
     }
     
     const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
@@ -126,7 +151,7 @@ export const useGraphLayout = (
     );
     
     return { layoutedNodes, layoutedEdges };
-  }, [nodes, edges, layoutDirection, preserveUserPositions]);
+  }, [nodes, edges, layoutDirection, preserveUserPositions, existingNodes]);
 };
 
 /**
@@ -213,7 +238,8 @@ export const useGraphState = (
   highlightOrderChangeValue?: string | null,
   searchedNodeIds: string[] = [],
   isSearchActive: boolean = false,
-  highlightedPathToStartNodeIds: Set<string> | null = null
+  highlightedPathToStartNodeIds: Set<string> | null = null,
+  existingFlowNodes?: FlowNode[]
 ) => {
   const [hasUserMovedNodes, setHasUserMovedNodes] = useState(false);
   const lastDataLength = useRef(0);
@@ -241,7 +267,13 @@ export const useGraphState = (
   const edges = useGraphEdges(data, highlightedPathToStartNodeIds);
 
   // Apply layout (preserve positions if user has moved nodes)
-  const { layoutedNodes, layoutedEdges } = useGraphLayout(nodes, edges, 'TB', hasUserMovedNodes);
+  const { layoutedNodes, layoutedEdges } = useGraphLayout(
+    nodes, 
+    edges, 
+    'TB', 
+    hasUserMovedNodes,
+    existingFlowNodes
+  );
 
   // Navigation helpers
   const navigation = useGraphNavigation(layoutedNodes, data, selectedNodeId);

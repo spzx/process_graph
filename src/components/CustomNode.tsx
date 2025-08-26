@@ -4,7 +4,7 @@ import { Network, ChevronRight, GitCommit, CheckCircle, Clock, Play, ArrowRightC
 import { OrderChange, FlowNodeData, NodeType } from '../types';
 import { NODE_TYPE_COLORS, VISUAL_CONFIG } from '../constants/graphVisualization';
 
-export const CustomNode: React.FC<NodeProps<FlowNodeData>> = ({ data, selected }) => {
+export const CustomNode = React.memo<NodeProps<FlowNodeData>>(({ data, selected }) => {
   const isHighlighted = data.isSelected;
   const isOrderChange = data.isOrderChangeNode;
   const { 
@@ -18,8 +18,17 @@ export const CustomNode: React.FC<NodeProps<FlowNodeData>> = ({ data, selected }
     isPathHighlightActive,
   } = data;
 
+  // Performance optimization: determine if we should show simplified view
+  const isLargeGraphMode = useMemo(() => {
+    // Check if we have many sibling nodes (indicating a large graph)
+    return document.querySelectorAll('[data-id]').length > 100;
+  }, []);
+
   // Filter order changes to display only those relevant to the selected field and value
   const filteredOrderChanges = useMemo(() => {
+    // Skip expensive processing for large graphs unless this node is specifically highlighted
+    if (isLargeGraphMode && !isHighlighted && !isOrderChange) return [];
+    
     if (!orderChanges || !highlightOrderChangeField || highlightOrderChangeField === 'none') return [];
     
     const filtered = orderChanges.map((change: any) => {
@@ -38,7 +47,7 @@ export const CustomNode: React.FC<NodeProps<FlowNodeData>> = ({ data, selected }
     }).filter(Boolean) as OrderChange[]; // Filter out nulls and assert type
 
     return filtered;
-  }, [orderChanges, highlightOrderChangeField, highlightOrderChangeValue]);
+  }, [orderChanges, highlightOrderChangeField, highlightOrderChangeValue, isLargeGraphMode, isHighlighted, isOrderChange]);
 
   // Determine base classes
   let nodeClasses = 'relative rounded-lg shadow-lg border-2 transition-all duration-200 min-w-[200px] max-w-[300px]';
@@ -134,48 +143,59 @@ export const CustomNode: React.FC<NodeProps<FlowNodeData>> = ({ data, selected }
 
         <p className="text-xs text-gray-600 line-clamp-2 mb-3">{data.shortDescription}</p>
 
-        {data.possibleOrderStatuses && data.possibleOrderStatuses.length > 0 && (
-          <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-center space-x-1 mb-2">
-              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              <span className="text-xs font-medium text-blue-800">Possible Order Status:</span>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {data.possibleOrderStatuses.map((status: string, index: number) => (
-                <span 
-                  key={index} 
-                  className="inline-flex items-center px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-medium rounded border border-blue-200"
-                >
-                  {status}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Show detailed content only for important nodes in large graphs */}
+        {(!isLargeGraphMode || isHighlighted || isOrderChange || isPathToStartNode) && (
+          <>
+            {data.possibleOrderStatuses && data.possibleOrderStatuses.length > 0 && (
+              <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center space-x-1 mb-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <span className="text-xs font-medium text-blue-800">Possible Order Status:</span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {data.possibleOrderStatuses.slice(0, isLargeGraphMode ? 3 : 10).map((status: string, index: number) => (
+                    <span 
+                      key={index} 
+                      className="inline-flex items-center px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-medium rounded border border-blue-200"
+                    >
+                      {status}
+                    </span>
+                  ))}
+                  {isLargeGraphMode && data.possibleOrderStatuses.length > 3 && (
+                    <span className="text-xs text-blue-600">+{data.possibleOrderStatuses.length - 3} more</span>
+                  )}
+                </div>
+              </div>
+            )}
 
-        {isOrderChange && filteredOrderChanges && filteredOrderChanges.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-purple-200">
-            <h4 className="text-xs font-semibold text-purple-700 mb-1">Order Changes:</h4>
-            <div className="space-y-1">
-              {filteredOrderChanges.map((change, index) => (
-                <div key={index} className="text-xs text-purple-800 bg-purple-50 px-2 py-1 rounded">
-                  {Object.entries(change.set).map(([key, value]) => (
-                    <div key={key} className="flex justify-between">
-                      <span className="font-medium">{key}:</span>
-                      <span className="ml-1">{value}</span>
+            {isOrderChange && filteredOrderChanges && filteredOrderChanges.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-purple-200">
+                <h4 className="text-xs font-semibold text-purple-700 mb-1">Order Changes:</h4>
+                <div className="space-y-1">
+                  {filteredOrderChanges.slice(0, isLargeGraphMode ? 2 : 5).map((change, index) => (
+                    <div key={index} className="text-xs text-purple-800 bg-purple-50 px-2 py-1 rounded">
+                      {Object.entries(change.set).map(([key, value]) => (
+                        <div key={key} className="flex justify-between">
+                          <span className="font-medium">{key}:</span>
+                          <span className="ml-1">{value}</span>
+                        </div>
+                      ))}
                     </div>
                   ))}
+                  {isLargeGraphMode && filteredOrderChanges.length > 2 && (
+                    <div className="text-xs text-purple-600">+{filteredOrderChanges.length - 2} more changes</div>
+                  )}
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+              </div>
+            )}
 
-        {data.nextNodes && data.nextNodes.length > 0 && (
-          <div className="flex items-center text-xs text-gray-500 mt-3">
-            <ChevronRight className="w-3 h-3 mr-1" />
-            <span>{data.nextNodes.length} connection{data.nextNodes.length > 1 ? 's' : ''}</span>
-          </div>
+            {data.nextNodes && data.nextNodes.length > 0 && (
+              <div className="flex items-center text-xs text-gray-500 mt-3">
+                <ChevronRight className="w-3 h-3 mr-1" />
+                <span>{data.nextNodes.length} connection{data.nextNodes.length > 1 ? 's' : ''}</span>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -187,4 +207,6 @@ export const CustomNode: React.FC<NodeProps<FlowNodeData>> = ({ data, selected }
       />
     </div>
   );
-};
+});
+
+CustomNode.displayName = 'CustomNode';

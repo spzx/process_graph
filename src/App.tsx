@@ -7,8 +7,78 @@ import { GraphNode } from './types';
 import { BarChart3, Upload, Search, Info, GitCommit, ArrowRightCircle, XCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ReactFlowProvider } from 'reactflow';
 
+// Inline sample data as fallback
+const SAMPLE_DATA: GraphNode[] = [
+  {
+    nodeId: "start",
+    type: "start",
+    shortDescription: "Order Received",
+    description: "Initial order processing starts when customer order is received",
+    businessPurpose: "Entry point for order fulfillment workflow",
+    orderChanges: [{
+      on: "success",
+      set: { "order.status": "RECEIVED" }
+    }],
+    nextNodes: [{
+      on: "success",
+      to: "validate_order",
+      description: "Proceed to order validation"
+    }]
+  },
+  {
+    nodeId: "validate_order",
+    type: "action",
+    shortDescription: "Validate Order",
+    description: "Validate order details, customer information, and item availability",
+    businessPurpose: "Ensure order integrity before processing",
+    orderChanges: [
+      { on: "success", set: { "order.status": "VALIDATED" } },
+      { on: "fail", set: { "order.status": "VALIDATION_FAILED" } }
+    ],
+    nextNodes: [
+      { on: "success", to: "process_payment", description: "Proceed to payment" },
+      { on: "fail", to: "order_cancelled", description: "Cancel due to validation failure" }
+    ]
+  },
+  {
+    nodeId: "process_payment",
+    type: "action",
+    shortDescription: "Process Payment",
+    description: "Charge customer payment method and process transaction",
+    businessPurpose: "Collect payment for the order",
+    orderChanges: [
+      { on: "success", set: { "order.status": "PAYMENT_PROCESSED" } },
+      { on: "fail", set: { "order.status": "PAYMENT_FAILED" } }
+    ],
+    nextNodes: [
+      { on: "success", to: "order_complete", description: "Complete order" },
+      { on: "fail", to: "order_cancelled", description: "Cancel due to payment failure" }
+    ]
+  },
+  {
+    nodeId: "order_complete",
+    type: "end",
+    shortDescription: "Order Complete",
+    description: "Order has been successfully processed and delivered",
+    businessPurpose: "Final state indicating successful order completion",
+    orderChanges: [{ on: "success", set: { "order.status": "COMPLETED" } }],
+    nextNodes: []
+  },
+  {
+    nodeId: "order_cancelled",
+    type: "end",
+    shortDescription: "Order Cancelled",
+    description: "Order was cancelled due to validation or payment issues",
+    businessPurpose: "Terminal state for cancelled orders",
+    orderChanges: [{ on: "success", set: { "order.status": "CANCELLED" } }],
+    nextNodes: []
+  }
+];
+
 // Helper function for graph traversal (forward)
 const getConnectedNodes = (nodes: GraphNode[], startNodeId: string): GraphNode[] => {
+  console.log('🔗 getConnectedNodes called with start:', startNodeId, 'total nodes:', nodes.length);
+  
   const nodeMap = new Map<string, GraphNode>();
   nodes.forEach(node => nodeMap.set(node.nodeId, node));
 
@@ -24,10 +94,15 @@ const getConnectedNodes = (nodes: GraphNode[], startNodeId: string): GraphNode[]
     const currentNode = nodeMap.get(currentId);
     if (currentNode) {
       connectedNodes.push(currentNode);
-      currentNode.nextNodes.forEach(nextNode => {
+      console.log('🔗 Processing node:', currentId, 'nextNodes count:', currentNode.nextNodes.length);
+      
+      currentNode.nextNodes.forEach((nextNode, index) => {
+        console.log('🔗 NextNode', index, ':', nextNode);
+        
         // Handle the new data structure with 'on', 'to', and 'description' fields
         if (nextNode.to) {
           const targetId = nextNode.to as string;
+          console.log('🔗 New structure - target:', targetId);
           if (!visited.has(targetId) && nodeMap.has(targetId)) {
             queue.push(targetId);
           }
@@ -35,6 +110,7 @@ const getConnectedNodes = (nodes: GraphNode[], startNodeId: string): GraphNode[]
           // Fallback to the old structure for backward compatibility
           Object.values(nextNode as any).forEach((targetId: any) => {
             if (typeof targetId === 'string' && !visited.has(targetId) && nodeMap.has(targetId)) {
+              console.log('🔗 Old structure - target:', targetId);
               queue.push(targetId);
             }
           });
@@ -42,6 +118,8 @@ const getConnectedNodes = (nodes: GraphNode[], startNodeId: string): GraphNode[]
       });
     }
   }
+  
+  console.log('🔗 getConnectedNodes result:', connectedNodes.length, 'nodes');
   return connectedNodes;
 };
 
@@ -123,21 +201,42 @@ function App() {
   const [showOnlyFromStart, setShowOnlyFromStart] = useState<boolean>(true);
   const [highlightedPathToStartNodeIds, setHighlightedPathToStartNodeIds] = useState<Set<string> | null>(null);
   const [currentTraversalIndex, setCurrentTraversalIndex] = useState(-1); // New state for traversal
+  const [isUsingSampleData, setIsUsingSampleData] = useState(false); // Track if sample data is loaded
+
+  // Debug: Track graphData changes
+  useEffect(() => {
+    console.log('🔄 graphData changed:', graphData.length, 'nodes');
+  }, [graphData]);
 
   // This memo now determines the base set of nodes based on 'showOnlyFromStart'
   // It operates on the full graphData to ensure connectivity is correctly determined.
   const baseGraphForDisplay = useMemo(() => {
+    console.log('🔍 baseGraphForDisplay calculation - graphData:', graphData.length, 'showOnlyFromStart:', showOnlyFromStart);
+    
+    // Temporarily disable filtering to debug the issue
+    console.log('🔍 Temporarily showing all nodes for debugging');
+    return graphData;
+    
+    // Original logic (commented out for debugging)
+    /*
     if (!showOnlyFromStart) {
+      console.log('🔍 Showing all nodes:', graphData.length);
       return graphData;
     }
 
     const startNode = graphData.find(node => node.type === 'start');
+    console.log('🔍 Start node found:', startNode ? startNode.nodeId : 'none');
+    
     if (!startNode) {
       // If "show only from start" is checked but no start node exists, show nothing
+      console.log('⚠️ No start node found, returning empty array');
       return [];
     }
 
-    return getConnectedNodes(graphData, startNode.nodeId);
+    const connectedNodes = getConnectedNodes(graphData, startNode.nodeId);
+    console.log('🔍 Connected nodes from start:', connectedNodes.length);
+    return connectedNodes;
+    */
   }, [graphData, showOnlyFromStart]);
 
   // This memo now identifies nodes that match the search query
@@ -165,6 +264,11 @@ function App() {
   // The displayGraphData now always returns the baseGraphForDisplay,
   // and search highlighting is handled by passing searchedNodeIds to GraphVisualization.
   const displayGraphData = baseGraphForDisplay;
+  
+  // Debug: Track displayGraphData changes
+  useEffect(() => {
+    console.log('📊 displayGraphData changed:', displayGraphData.length, 'nodes');
+  }, [displayGraphData.length]);
 
   // Memo to get all currently highlighted nodes for traversal
   const allHighlightedNodes = useMemo(() => {
@@ -241,9 +345,40 @@ function App() {
     }
   }, [allHighlightedNodes]); // Dependency on allHighlightedNodes
 
+  // Load sample data on startup if no data is present
+  useEffect(() => {
+    if (graphData.length === 0) {
+      console.log('Loading sample data...');
+      // Try to load sample data from file, fallback to inline data
+      fetch('/sample-order-workflow.json')
+        .then(response => {
+          console.log('Sample data response status:', response.status);
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          console.log('Sample data loaded from file:', data.length, 'nodes');
+          setGraphData(data);
+          setIsUsingSampleData(true);
+          setUploadError(null);
+        })
+        .catch(error => {
+          console.error('Failed to load sample data from file, using inline fallback:', error);
+          // Use inline sample data as fallback
+          console.log('Loading inline sample data:', SAMPLE_DATA.length, 'nodes');
+          setGraphData(SAMPLE_DATA);
+          setIsUsingSampleData(true);
+          setUploadError(null);
+        });
+    }
+  }, []); // Only run once on mount
+
   const handleFileUploadSuccess = (data: GraphNode[]) => {
     setUploadError(null); // Clear any previous error
     setGraphData(data);
+    setIsUsingSampleData(false); // User data loaded
     resetApp(); // Reset all filters/highlights when a new file is uploaded
   };
 
@@ -435,6 +570,12 @@ function App() {
             <div className="bg-white rounded-xl shadow-sm border p-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-6">
+                  {isUsingSampleData && (
+                    <div className="flex items-center space-x-2 text-sm text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                      <span className="font-medium">Sample Data: Order Workflow</span>
+                    </div>
+                  )}
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
                     <span className="text-sm font-medium text-gray-900">
