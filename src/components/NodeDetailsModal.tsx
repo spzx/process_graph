@@ -151,19 +151,19 @@ export const NodeDetailsModal: React.FC<NodeDetailsModalProps> = ({
                       </div>
                     ) : (
                       /* Fallback to the old structure for backward compatibility */
-                      Object.entries(nextNode as any).map(([condition, targetNodeId]) => (
+                      Object.entries(nextNode as any).map(([condition, targetNodeId]: [string, any]) => (
                         <div key={condition} className="flex items-center justify-between text-sm">
                           <span className="font-medium text-gray-700">{condition}:</span>
-                          {allNodes.some(n => n.nodeId === targetNodeId) ? (
+                          {allNodes.some(n => n.nodeId === String(targetNodeId)) ? (
                             <button
-                              onClick={() => onNavigateToNode(targetNodeId)}
+                              onClick={() => onNavigateToNode(String(targetNodeId))}
                               className="text-blue-600 hover:text-blue-800 hover:underline flex items-center space-x-1 transition-colors"
                             >
-                              <span>{targetNodeId}</span>
+                              <span>{String(targetNodeId)}</span>
                               <ChevronRight className="w-4 h-4" />
                             </button>
                           ) : (
-                            <span className="text-gray-500 italic">{targetNodeId} (Not found)</span>
+                            <span className="text-gray-500 italic">{String(targetNodeId)} (Not found)</span>
                           )}
                         </div>
                       ))
@@ -180,7 +180,7 @@ export const NodeDetailsModal: React.FC<NodeDetailsModalProps> = ({
               <SectionTitle
                 icon={<Book className="w-5 h-5" />}
                 title="Business Rules"
-                count={node.businessRules.length}
+                count={node.businessRules?.length || 0}
                 color="text-green-700"
               />
               <div className="space-y-1 border border-green-200 rounded-lg p-4 bg-green-50">
@@ -199,7 +199,7 @@ export const NodeDetailsModal: React.FC<NodeDetailsModalProps> = ({
               <SectionTitle
                 icon={<Code className="w-5 h-5" />}
                 title="Dependencies"
-                count={node.dependencies.length}
+                count={node.dependencies?.length || 0}
                 color="text-orange-700"
               />
               <div className="space-y-1 border border-orange-200 rounded-lg p-4 bg-orange-50 flex flex-wrap gap-2">
@@ -218,7 +218,7 @@ export const NodeDetailsModal: React.FC<NodeDetailsModalProps> = ({
               <SectionTitle
                 icon={<Settings className="w-5 h-5" />}
                 title="Configuration Flags"
-                count={node.configurationFlags.length}
+                count={node.configurationFlags?.length || 0}
                 color="text-teal-700"
               />
               <div className="space-y-3 border border-teal-200 rounded-lg p-4 bg-teal-50">
@@ -238,7 +238,7 @@ export const NodeDetailsModal: React.FC<NodeDetailsModalProps> = ({
               <SectionTitle
                 icon={<AlertTriangle className="w-5 h-5" />}
                 title="Edge Cases"
-                count={node.edgeCases.length}
+                count={node.edgeCases?.length || 0}
                 color="text-red-700"
               />
               <div className="space-y-1 border border-red-200 rounded-lg p-4 bg-red-50">

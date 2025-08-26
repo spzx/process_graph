@@ -27,14 +27,14 @@ const getConnectedNodes = (nodes: GraphNode[], startNodeId: string): GraphNode[]
       currentNode.nextNodes.forEach(nextNode => {
         // Handle the new data structure with 'on', 'to', and 'description' fields
         if (nextNode.to) {
-          const targetId = nextNode.to;
+          const targetId = nextNode.to as string;
           if (!visited.has(targetId) && nodeMap.has(targetId)) {
             queue.push(targetId);
           }
         } else {
           // Fallback to the old structure for backward compatibility
-          Object.values(nextNode as any).forEach(targetId => {
-            if (!visited.has(targetId) && nodeMap.has(targetId)) {
+          Object.values(nextNode as any).forEach((targetId: any) => {
+            if (typeof targetId === 'string' && !visited.has(targetId) && nodeMap.has(targetId)) {
               queue.push(targetId);
             }
           });
@@ -56,7 +56,7 @@ const getPathsToStart = (nodes: GraphNode[], targetNodeId: string, startNodeId: 
     node.nextNodes.forEach(nextNode => {
       // Handle the new data structure with 'on', 'to', and 'description' fields
       if (nextNode.to) {
-        const target = nextNode.to;
+        const target = nextNode.to as string;
         if (nodeMap.has(target)) { // Only add if target exists in the graph
           if (!reverseGraph.has(target)) {
             reverseGraph.set(target, []);
@@ -65,8 +65,8 @@ const getPathsToStart = (nodes: GraphNode[], targetNodeId: string, startNodeId: 
         }
       } else {
         // Fallback to the old structure for backward compatibility
-        Object.values(nextNode as any).forEach(target => {
-          if (nodeMap.has(target)) { // Only add if target exists in the graph
+        Object.values(nextNode as any).forEach((target: any) => {
+          if (typeof target === 'string' && nodeMap.has(target)) {
             if (!reverseGraph.has(target)) {
               reverseGraph.set(target, []);
             }
@@ -578,7 +578,7 @@ function App() {
                   <GraphVisualization
                     data={displayGraphData}
                     onNodeSelect={handleNodeSelect}
-                    selectedNodeId={highlightedNodeId}
+                    selectedNodeId={highlightedNodeId || undefined}
                     highlightOrderChangeField={highlightOrderChangeField}
                     highlightOrderChangeValue={highlightOrderChangeValue}
                     searchedNodeIds={searchedNodeIds}

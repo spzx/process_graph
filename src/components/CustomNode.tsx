@@ -1,35 +1,10 @@
 import React, { useMemo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { Network, ChevronRight, GitCommit, CheckCircle, Clock, Play, ArrowRightCircle, Waypoints } from 'lucide-react';
-import { OrderChange } from '../types';
+import { OrderChange, FlowNodeData, NodeType } from '../types';
+import { NODE_TYPE_COLORS, VISUAL_CONFIG } from '../constants/graphVisualization';
 
-interface CustomNodeData {
-  label: string;
-  shortDescription: string;
-  description: string;
-  businessPurpose?: string; // New field
-  nextNodes: Array<{
-    on: string;
-    to: string;
-    description: string;
-  }>;
-  isSelected?: boolean;
-  isOrderChangeNode?: boolean;
-  orderChanges?: OrderChange[];
-  highlightOrderChangeField?: string;
-  highlightOrderChangeValue?: string | null;
-  nodeType?: 'end' | 'wait' | 'action' | 'start';
-  isSearchedMatch?: boolean;
-  isSearchActive?: boolean;
-  isPathToStartNode?: boolean;
-  isPathHighlightActive?: boolean;
-  businessRules?: string[]; // New field
-  dependencies?: string[]; // New field
-  configurationFlags?: { key: string; description: string }[]; // New field
-  edgeCases?: string[]; // New field
-}
-
-export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ data, selected }) => {
+export const CustomNode: React.FC<NodeProps<FlowNodeData>> = ({ data, selected }) => {
   const isHighlighted = data.isSelected;
   const isOrderChange = data.isOrderChangeNode;
   const { 
@@ -47,7 +22,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ data, selected
   const filteredOrderChanges = useMemo(() => {
     if (!orderChanges || !highlightOrderChangeField || highlightOrderChangeField === 'none') return [];
     
-    const filtered = orderChanges.map(change => {
+    const filtered = orderChanges.map((change: any) => {
       const filteredSet: Record<string, string> = {};
       for (const key in change.set) {
         if (key === highlightOrderChangeField) {
@@ -71,14 +46,19 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ data, selected
   let iconClasses = 'w-4 h-4';
   let NodeIcon = Network; // Default icon
 
+  // Get node type configuration
+  const nodeTypeConfig = (data.nodeType && data.nodeType in NODE_TYPE_COLORS) 
+    ? NODE_TYPE_COLORS[data.nodeType as keyof typeof NODE_TYPE_COLORS] 
+    : NODE_TYPE_COLORS.default;
+
   // Path highlight takes precedence for greying out
   if (isPathHighlightActive && !isPathToStartNode) {
-    nodeClasses += ' bg-gray-100 border-gray-200 opacity-50 grayscale';
+    nodeClasses += ` ${VISUAL_CONFIG.highlight.colors.dimmed} border-gray-200 opacity-50 grayscale`;
     iconBgClasses += ' bg-gray-200';
     iconClasses += ' text-gray-500';
   } else if (isSearchActive && !isSearchedMatch) {
     // Grey out non-matching nodes when search is active
-    nodeClasses += ' bg-gray-100 border-gray-200 opacity-50 grayscale';
+    nodeClasses += ` ${VISUAL_CONFIG.highlight.colors.dimmed} border-gray-200 opacity-50 grayscale`;
     iconBgClasses += ' bg-gray-200';
     iconClasses += ' text-gray-500';
   } else if (isHighlighted) {
@@ -101,36 +81,26 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ data, selected
     iconBgClasses += ' bg-blue-100';
     iconClasses += ' text-blue-600';
   } else {
-    // Default styling, now with type-specific overrides
-    switch (nodeType) {
+    // Apply node type styling using constants
+    nodeClasses += ` ${nodeTypeConfig.background} ${nodeTypeConfig.border} ${nodeTypeConfig.hover} hover:shadow-xl`;
+    iconBgClasses += ` ${nodeTypeConfig.iconBg}`;
+    iconClasses += ` ${nodeTypeConfig.iconColor}`;
+    
+    // Set appropriate icon based on node type
+    switch (data.nodeType) {
       case 'start':
-        nodeClasses += ' bg-green-50 border-green-500 hover:border-green-600 hover:shadow-xl';
-        iconBgClasses += ' bg-green-100';
-        iconClasses += ' text-green-600';
-        NodeIcon = ArrowRightCircle; // Icon for start node
+        NodeIcon = ArrowRightCircle;
         break;
       case 'end':
-        nodeClasses += ' bg-green-50 border-green-500 hover:border-green-600 hover:shadow-xl';
-        iconBgClasses += ' bg-green-100';
-        iconClasses += ' text-green-600';
         NodeIcon = CheckCircle;
         break;
       case 'wait':
-        nodeClasses += ' bg-yellow-50 border-yellow-500 hover:border-yellow-600 hover:shadow-xl';
-        iconBgClasses += ' bg-yellow-100';
-        iconClasses += ' text-yellow-600';
         NodeIcon = Clock;
         break;
       case 'action':
-        nodeClasses += ' bg-blue-50 border-blue-500 hover:border-blue-600 hover:shadow-xl';
-        iconBgClasses += ' bg-blue-100';
-        iconClasses += ' text-blue-600';
         NodeIcon = Play;
         break;
       default:
-        nodeClasses += ' bg-white border-gray-200 hover:border-gray-300 hover:shadow-xl';
-        iconBgClasses += ' bg-blue-100'; // Default icon background
-        iconClasses += ' text-blue-600'; // Default icon color
         NodeIcon = Network;
         break;
     }
@@ -141,7 +111,8 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ data, selected
       <Handle
         type="target"
         position={Position.Top}
-        className="!bg-gray-400 !border-2 !border-white !w-3 !h-3"
+        className={`!bg-gray-400 !border-2 !border-white !w-${VISUAL_CONFIG.node.handle.width / 4} !h-${VISUAL_CONFIG.node.handle.height / 4}`}
+        aria-label="Input connection point"
       />
 
       {isOrderChange && (
@@ -192,7 +163,8 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ data, selected
       <Handle
         type="source"
         position={Position.Bottom}
-        className="!bg-blue-500 !border-2 !border-white !w-3 !h-3"
+        className={`!bg-blue-500 !border-2 !border-white !w-${VISUAL_CONFIG.node.handle.width / 4} !h-${VISUAL_CONFIG.node.handle.height / 4}`}
+        aria-label="Output connection point"
       />
     </div>
   );
