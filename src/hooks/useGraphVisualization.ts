@@ -5,8 +5,7 @@
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { useReactFlow } from 'reactflow';
 import { GraphNode, FlowNode, FlowEdge } from '../types';
-import { 
-  getLayoutedElements, 
+import {
   shouldHighlightForOrderChange, 
   safeCreateEdges,
   calculateNodeCenter,
@@ -110,17 +109,15 @@ export const useGraphEdges = (
 };
 
 /**
- * Hook for applying layout to nodes and edges
+ * Hook for preserving user-moved node positions
  */
-export const useGraphLayout = (
+export const usePreservePositions = (
   nodes: FlowNode[],
-  edges: FlowEdge[],
-  layoutDirection: string = 'TB',
   preserveUserPositions: boolean = false,
   existingNodes?: FlowNode[]
-): { layoutedNodes: FlowNode[]; layoutedEdges: FlowEdge[] } => {
+): FlowNode[] => {
   return useMemo(() => {
-    if (!nodes.length) return { layoutedNodes: [], layoutedEdges: [] };
+    if (!nodes.length) return [];
     
     // If preserveUserPositions is true and we have existing nodes, preserve their positions
     if (preserveUserPositions && existingNodes && existingNodes.length > 0) {
@@ -130,7 +127,7 @@ export const useGraphLayout = (
       });
       
       // Apply preserved positions to new nodes
-      const nodesWithPreservedPositions = nodes.map(node => {
+      return nodes.map(node => {
         const preservedPosition = existingPositions.get(node.id);
         if (preservedPosition) {
           return {
@@ -140,18 +137,11 @@ export const useGraphLayout = (
         }
         return node;
       });
-      
-      return { layoutedNodes: nodesWithPreservedPositions, layoutedEdges: edges };
     }
     
-    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
-      nodes, 
-      edges, 
-      layoutDirection
-    );
-    
-    return { layoutedNodes, layoutedEdges };
-  }, [nodes, edges, layoutDirection, preserveUserPositions, existingNodes]);
+    // Return nodes as-is (positions will be set by the async layout system)
+    return nodes;
+  }, [nodes, preserveUserPositions, existingNodes]);
 };
 
 /**
@@ -266,21 +256,19 @@ export const useGraphState = (
   // Process edges
   const edges = useGraphEdges(data, highlightedPathToStartNodeIds);
 
-  // Apply layout (preserve positions if user has moved nodes)
-  const { layoutedNodes, layoutedEdges } = useGraphLayout(
+  // Apply position preservation if user has moved nodes
+  const processedNodes = usePreservePositions(
     nodes, 
-    edges, 
-    'TB', 
     hasUserMovedNodes,
     existingFlowNodes
   );
 
   // Navigation helpers
-  const navigation = useGraphNavigation(layoutedNodes, data, selectedNodeId);
+  const navigation = useGraphNavigation(processedNodes, data, selectedNodeId);
 
   return {
-    nodes: layoutedNodes,
-    edges: layoutedEdges,
+    nodes: processedNodes,
+    edges: edges,
     navigation,
     hasData: data.length > 0,
     onUserMoveNodes: () => setHasUserMovedNodes(true),

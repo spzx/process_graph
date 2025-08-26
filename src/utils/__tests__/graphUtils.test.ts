@@ -174,8 +174,8 @@ describe('graphUtils', () => {
       const node = { position: { x: 100, y: 200 } };
       const center = calculateNodeCenter(node);
       
-      expect(center.x).toBe(225); // 100 + 250/2
-      expect(center.y).toBe(270); // 200 + 140/2 (updated from 100 to 140)
+      expect(center.x).toBe(240); // 100 + 280/2
+      expect(center.y).toBe(310); // 200 + 220/2
     });
 
     it('should calculate center correctly with custom dimensions', () => {

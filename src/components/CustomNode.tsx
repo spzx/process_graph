@@ -119,7 +119,7 @@ export const CustomNode = React.memo<NodeProps<FlowNodeData>>(({ data, selected 
     <div className={nodeClasses}>
       <Handle
         type="target"
-        position={Position.Top}
+        position={Position.Left}
         className={`!bg-gray-400 !border-2 !border-white !w-${VISUAL_CONFIG.node.handle.width / 4} !h-${VISUAL_CONFIG.node.handle.height / 4}`}
         aria-label="Input connection point"
       />
@@ -201,7 +201,7 @@ export const CustomNode = React.memo<NodeProps<FlowNodeData>>(({ data, selected 
 
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={Position.Right}
         className={`!bg-blue-500 !border-2 !border-white !w-${VISUAL_CONFIG.node.handle.width / 4} !h-${VISUAL_CONFIG.node.handle.height / 4}`}
         aria-label="Output connection point"
       />

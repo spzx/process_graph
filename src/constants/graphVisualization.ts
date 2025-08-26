@@ -60,20 +60,36 @@ export const NODE_TYPE_COLORS = {
   },
 } as const;
 
-// Layout configuration for dagre
+// Layout configuration for the new dependency-aware layout system
 export const LAYOUT_CONFIG = {
-  direction: 'TB' as const,
-  nodeSpacing: {
-    rankSep: 150,  // Vertical spacing between ranks (increased from 100)
-    nodeSep: 100,  // Horizontal spacing between nodes (increased from 70)
-    marginX: 50,   // Horizontal margin (increased from 30)
-    marginY: 50,   // Vertical margin (increased from 30)
+  direction: 'LR' as const, // Left-to-right dependency flow
+  spacing: {
+    layerSpacing: 350,  // Horizontal spacing between dependency layers
+    nodeSpacing: 250,   // Vertical spacing between nodes in same layer
+    basePosition: { x: 50, y: 50 }, // Starting coordinates with margin
   },
   nodeSize: {
-    width: 250,
+    width: 280,
     height: {
-      default: 140,  // Increased from 100 to account for order status tags
-      orderChange: 240, // Increased from 200 to account for additional content
+      default: 220,     // Standard node height
+      orderChange: 240, // Order change nodes with additional content
+    },
+  },
+  optimization: {
+    quality: {
+      minimizeEdgeCrossings: true,
+      alignment: 'center' as const,
+      balanceScore: 0.8,
+    },
+    performance: {
+      minimizeEdgeCrossings: false,
+      alignment: 'top' as const,
+      maxNodes: 200,
+    },
+    balanced: {
+      minimizeEdgeCrossings: true,
+      alignment: 'top' as const,
+      balanceScore: 0.6,
     },
   },
 } as const;
@@ -153,3 +169,51 @@ export const ACCESSIBILITY_LABELS = {
 export type EdgeColorKey = keyof typeof EDGE_COLORS;
 export type NodeType = keyof typeof NODE_TYPE_COLORS;
 export type LayoutDirection = typeof LAYOUT_CONFIG.direction;
+
+// Performance and quality thresholds for the layout system
+export const PERFORMANCE_CONFIG = {
+  thresholds: {
+    maxNodes: 200,           // Performance warning threshold
+    maxEdgeCrossings: 10,    // Visual quality threshold
+    maxLayerWidth: 8,        // Optimal layer width
+  },
+  adaptiveSettings: {
+    small: {
+      nodes: 50,
+      throttle: 100,
+      optimization: 'quality' as const,
+    },
+    medium: {
+      nodes: 100,
+      throttle: 200,
+      optimization: 'balanced' as const,
+    },
+    large: {
+      nodes: 200,
+      throttle: 300,
+      optimization: 'performance' as const,
+    },
+  },
+} as const;
+
+// Cycle handling configuration
+export const CYCLE_CONFIG = {
+  detection: {
+    enabled: true,
+    complexity: {
+      simple: { maxCycles: 1, maxNodesPerCycle: 3 },
+      complex: { maxCycles: 3, maxNodesPerCycle: 5 },
+      critical: { maxCycles: 999, maxNodesPerCycle: 999 },
+    },
+  },
+  breaking: {
+    strategy: 'break' as const, // 'break' | 'highlight' | 'ignore'
+    feedbackEdge: {
+      style: {
+        strokeDasharray: '5,5',
+        stroke: '#9CA3AF',
+        opacity: 0.7,
+      },
+    },
+  },
+} as const;

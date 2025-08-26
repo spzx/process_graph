@@ -1,9 +1,10 @@
 /**
- * GraphVisualization Component - Final Version with ElkJS Automated Layout
+ * GraphVisualization Component - Modern Dependency-Aware Layout System
  *
- * This version uses the advanced ElkJS layout engine for superior node placement and edge routing.
- * It handles the asynchronous nature of ElkJS and programmatically fits the view once the layout is complete.
- * This is the recommended final implementation for achieving a high-quality, aesthetically pleasing graph.
+ * This version uses the advanced GraphLayoutManager system for superior node placement
+ * that ensures proper left-to-right dependency flow. It replaces the previous ElkJS/custom
+ * hybrid approach with a unified, dependency-first layout engine that handles circular
+ * dependencies and provides comprehensive layout validation.
  */
 import React, { useEffect, useState, useMemo } from 'react';
 import ReactFlow, {
@@ -29,7 +30,7 @@ import {
 } from '../hooks/useGraphVisualization';
 import { useAdaptivePerformanceSettings } from '../hooks/useLargeGraphOptimization';
 import { safeValidateGraph } from '../utils/validation';
-import { getLayoutedElements } from '../utils/layout'; // This should now be the ElkJS version
+import { getLayoutedElements } from '../utils/layout'; // Modern dependency-aware layout system
 import {
   ERROR_MESSAGES,
   ACCESSIBILITY_LABELS,
@@ -68,11 +69,11 @@ const GraphLayoutWrapper: React.FC<GraphVisualizationProps> = (props) => {
     props.highlightedPathToStartNodeIds,
   );
 
-  // This useEffect handles the asynchronous layout calculation from ElkJS.
+  // This useEffect handles the asynchronous layout calculation from the new GraphLayoutManager.
   useEffect(() => {
     // Only run the layout if there are nodes to process.
     if (processedNodes.length > 0) {
-      // getLayoutedElements is now async and returns a Promise.
+      // getLayoutedElements now uses the GraphLayoutManager system and returns a Promise.
       getLayoutedElements(processedNodes, processedEdges).then(layoutedNodes => {
         setFlowNodes(layoutedNodes);
         setFlowEdges(processedEdges);
@@ -80,7 +81,7 @@ const GraphLayoutWrapper: React.FC<GraphVisualizationProps> = (props) => {
         setIsLaidOut(true);
       }).catch(error => {
         console.error("Layout calculation failed:", error);
-        // Fallback to un-layouted nodes if ElkJS fails
+        // Fallback to un-layouted nodes if layout system fails
         setFlowNodes(processedNodes);
         setFlowEdges(processedEdges);
       });
@@ -109,15 +110,15 @@ const GraphLayoutWrapper: React.FC<GraphVisualizationProps> = (props) => {
   // Memoize event handlers and other props to optimize performance.
   const handleNodeClick = useNodeClick(props.data, props.onNodeSelect);
   const getMinimapNodeColor = useMinimapNodeColor();
-  const adaptiveSettings = useAdaptivePerformanceSettings(props.data.length);
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
   const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
 
   return (
     <div className="h-full w-full relative" role="application">
-        <div className="absolute top-2 left-2 bg-yellow-100 border border-yellow-400 p-2 text-xs z-50 rounded shadow-lg">
-            <div>Prop data: {props.data.length}</div>
-            <div>React Flow nodes (rendered): {flowNodes.length}</div>
+        <div className="absolute top-2 left-2 bg-blue-100 border border-blue-400 p-2 text-xs z-50 rounded shadow-lg">
+            <div>📊 Graph Data: {props.data.length} nodes</div>
+            <div>🎯 Rendered: {flowNodes.length} positioned</div>
+            <div>🔧 Layout: New dependency-aware system</div>
         </div>
         <ReactFlow
             nodes={flowNodes}
@@ -136,7 +137,14 @@ const GraphLayoutWrapper: React.FC<GraphVisualizationProps> = (props) => {
             nodesConnectable={false}
             elementsSelectable={true}
             deleteKeyCode={null}
-            {...adaptiveSettings} // Spread valid performance settings
+            // Performance settings based on graph size
+            onlyRenderVisibleElements={flowNodes.length > 100}
+            elevateNodesOnSelect={false}
+            elevateEdgesOnSelect={false}
+            selectNodesOnDrag={flowNodes.length < 100}
+            panOnDrag={flowNodes.length > 100 ? [1] : [1, 2]}
+            zoomOnScroll={flowNodes.length < 100}
+            zoomOnPinch={flowNodes.length < 100}
         >
             <Background color="#e5e7eb" size={1} />
             <Controls />
