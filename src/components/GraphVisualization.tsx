@@ -1,9 +1,14 @@
 /**
- * Enhanced GraphVisualization component with improved architecture
- * Features: Better error handling, performance optimization, accessibility
+ * GraphVisualization Component - Final Corrected Version
+ *
+ * This component displays graph data using React Flow and includes several key fixes:
+ * 1.  Uses `useNodesState` and `useEdgesState` for robust state management, preventing race conditions.
+ * 2.  Separates data synchronization and UI effects (like initial centering) into distinct `useEffect`
+ *     hooks with correct dependencies, resolving stale state issues that prevented rendering.
+ * 3.  Explicitly passes props to `<ReactFlow>` to avoid console warnings about unrecognized attributes.
+ * 4.  Preserves user-dragged node positions across data refreshes for a better user experience.
  */
-
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -11,7 +16,6 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
   ConnectionMode,
-  useReactFlow,
   Viewport,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
@@ -21,16 +25,16 @@ import { CustomEdge } from './CustomEdge';
 import { PerformanceMonitor } from './PerformanceMonitor';
 import { GraphNode } from '../types';
 import type { FlowNode, FlowEdge } from '../types';
-import { 
-  useGraphState, 
-  useNodeClick, 
-  useMinimapNodeColor 
+import {
+  useGraphState,
+  useNodeClick,
+  useMinimapNodeColor,
 } from '../hooks/useGraphVisualization';
 import { useLargeGraphOptimization, useAdaptivePerformanceSettings } from '../hooks/useLargeGraphOptimization';
 import { safeValidateGraph } from '../utils/validation';
-import { 
-  ERROR_MESSAGES, 
-  ACCESSIBILITY_LABELS 
+import {
+  ERROR_MESSAGES,
+  ACCESSIBILITY_LABELS,
 } from '../constants/graphVisualization';
 
 interface GraphVisualizationProps {
@@ -60,26 +64,19 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
 }) => {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [hasInitialCentered, setHasInitialCentered] = useState(false);
-  const throttleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 0.8 });
   const [isLargeGraph, setIsLargeGraph] = useState(false);
-  
-  // Performance optimization: detect large graphs
+
+  const [flowNodes, setFlowNodes, onNodesChange] = useNodesState([]);
+  const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState([]);
+
   useEffect(() => {
-    // Temporarily disable large graph mode for debugging
-    setIsLargeGraph(false); // data.length > 100
+    setIsLargeGraph(data.length > 100);
   }, [data.length]);
 
-  // Memoize node and edge types to prevent recreation
-  const nodeTypes = useMemo(() => ({
-    custom: CustomNode,
-  }), []);
+  const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
+  const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
 
-  const edgeTypes = useMemo(() => ({
-    custom: CustomEdge,
-  }), []);
-
-  // Validate data on changes
   useEffect(() => {
     if (data.length > 0) {
       const validation = safeValidateGraph(data);
@@ -93,25 +90,12 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
     }
   }, [data, onError]);
 
-  // React Flow state management - temporarily bypass useNodesState for debugging
-  // const [flowNodes, setFlowNodes, onNodesChange] = useNodesState([]);
-  // const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState([]);
-  
-  // Direct state management for debugging
-  const [flowNodes, setFlowNodes] = useState<FlowNode[]>([]);
-  const [flowEdges, setFlowEdges] = useState<FlowEdge[]>([]);
-  
-  // Dummy handlers for now
-  const onNodesChange = useCallback((changes: any[]) => {
-    console.log('⚠️ onNodesChange called but temporarily disabled for debugging');
-  }, []);
-  
-  const onEdgesChange = useCallback((changes: any[]) => {
-    console.log('⚠️ onEdgesChange called but temporarily disabled for debugging');
-  }, []);
-
-  // Process graph data using custom hooks (pass current flow nodes for position preservation)
-  const { nodes, edges, navigation, hasData, onUserMoveNodes } = useGraphState(
+  const {
+    nodes: processedNodes,
+    edges: processedEdges,
+    navigation,
+    hasData,
+  } = useGraphState(
     data,
     selectedNodeId,
     highlightOrderChangeField,
@@ -119,119 +103,61 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
     searchedNodeIds,
     isSearchActive,
     highlightedPathToStartNodeIds,
-    flowNodes // Pass current flow nodes for position preservation
   );
 
-  // Debug logging
-  useEffect(() => {
-    console.log('📥 GraphVisualization received data:', data.length, 'nodes');
-    console.log('🔄 Processed nodes:', nodes.length, 'edges:', edges.length);
-    console.log('✅ hasData:', hasData);
-    if (data.length > 0 && !hasData) {
-      console.error('❌ CRITICAL: data exists but hasData is false!');
-    }
-  }, [data.length, nodes.length, edges.length, hasData]);
-
-  // Large graph optimizations
   const optimizedGraph = useLargeGraphOptimization({
-    nodes,
-    edges,
+    nodes: processedNodes,
+    edges: processedEdges,
     viewport,
     isLargeGraph,
   });
-
-  // Adaptive performance settings
-  const performanceSettings = useAdaptivePerformanceSettings(data.length);
-
-  // Use optimized nodes and edges for large graphs
-  const finalNodes = isLargeGraph ? optimizedGraph.visibleNodes : nodes;
-  const finalEdges = isLargeGraph ? optimizedGraph.visibleEdges : edges;
   
-  // Debug logging for optimization
+  const adaptiveSettings = useAdaptivePerformanceSettings(data.length);
+
+  const finalNodes = isLargeGraph ? optimizedGraph.visibleNodes : processedNodes;
+  const finalEdges = isLargeGraph ? optimizedGraph.visibleEdges : processedEdges;
+
+  // EFFECT 1: Synchronize processed data with React Flow's internal state.
+  // This hook's only job is to update the graph when the source data changes.
   useEffect(() => {
-    console.log('isLargeGraph:', isLargeGraph, 'originalNodes:', nodes.length, 'finalNodes:', finalNodes.length);
-    if (isLargeGraph) {
-      console.log('Viewport culling:', optimizedGraph.culledNodeCount, 'nodes culled');
-    }
-  }, [isLargeGraph, nodes.length, finalNodes.length, optimizedGraph]);
+    // Using a functional update (`(currentNodes) => ...`) ensures we always have the latest
+    // state to compare against, avoiding stale state issues without adding `flowNodes`
+    // to the dependency array, which would cause an infinite loop.
+    setFlowNodes((currentFlowNodes) => {
+      const positionMap = new Map(currentFlowNodes.map(n => [n.id, n.position]));
+      return finalNodes.map(newNode => ({
+        ...newNode,
+        position: positionMap.get(newNode.id) || newNode.position,
+      }));
+    });
+    setFlowEdges(finalEdges);
+  }, [finalNodes, finalEdges, setFlowNodes, setFlowEdges]);
 
-  // Enhanced onNodesChange to track user movements with throttling
-  const handleNodesChange = useCallback((changes: any[]) => {
-    console.log('🔄 handleNodesChange called with changes:', changes.length, changes);
-    
-    // Always apply the changes immediately for smooth dragging
-    onNodesChange(changes);
-    
-    // Check if any change is a position change (user dragging) - throttled
-    const hasPositionChange = changes.some(change => 
-      change.type === 'position' && change.dragging === false
-    );
-    
-    if (hasPositionChange) {
-      // Use a ref to throttle the onUserMoveNodes call
-      if (throttleTimeoutRef.current) {
-        clearTimeout(throttleTimeoutRef.current);
+  // EFFECT 2: Handle the initial view centering.
+  // This hook runs *after* the nodes are successfully loaded into the state.
+  useEffect(() => {
+    if (flowNodes.length > 0 && !hasInitialCentered) {
+      try {
+        navigation.centerOnStart();
+        setHasInitialCentered(true);
+      } catch (error) {
+        console.warn('Error during initial centering:', error);
+        onError?.(error as Error, 'navigation');
       }
-      
-      throttleTimeoutRef.current = setTimeout(() => {
-        onUserMoveNodes();
-      }, performanceSettings.throttleDelay);
+    } else if (data.length === 0) {
+      // Reset the flag if the data is cleared, so it can center again on new data.
+      setHasInitialCentered(false);
     }
-  }, [onNodesChange, onUserMoveNodes, performanceSettings.throttleDelay]);
+  }, [flowNodes.length, hasInitialCentered, navigation, data.length, onError]);
 
-  // Viewport change handler for performance optimization
-  const handleViewportChange = useCallback((event: MouseEvent | TouchEvent | null, newViewport: Viewport) => {
-    setViewport(newViewport);
-  }, []);
-
-  // Event handlers
+  // Event handlers and other effects
   const handleNodeClick = useNodeClick(data, onNodeSelect);
   const getMinimapNodeColor = useMinimapNodeColor();
 
-  // Update flow state when processed data changes
-  useEffect(() => {
-    console.log('🔄 Setting flow state - nodes:', finalNodes.length, 'edges:', finalEdges.length);
-    
-    // Set the flow state immediately
-    setFlowNodes(finalNodes);
-    setFlowEdges(finalEdges);
-    
-    // Debug immediately after setting (in same render cycle)
-    console.log('🚀 Flow state updated - flowNodes will be:', finalNodes.length, 'flowEdges will be:', finalEdges.length);
-    
-    // Handle initial centering only when we first get data
-    if (finalNodes.length > 0 && !hasInitialCentered) {
-      try {
-        console.log('🎯 Attempting to center on start node');
-        // Temporarily disable automatic navigation for debugging
-        // navigation.centerOnStart();
-        console.log('⚠️ Navigation disabled for debugging');
-        setHasInitialCentered(true);
-        console.log('✅ Successfully centered on start');
-      } catch (error) {
-        console.warn('❌ Error during initial navigation:', error);
-        onError?.(error as Error, 'navigation');
-      }
-    } else if (finalNodes.length === 0) {
-      console.log('🔄 No nodes, resetting hasInitialCentered');
-      setHasInitialCentered(false);
-    }
-  }, [finalNodes, finalEdges, navigation, hasInitialCentered, onError]);
-  
-  // Debug the actual flow state after it's been set
-  useEffect(() => {
-    console.log('🚀 ReactFlow actual state - flowNodes:', flowNodes.length, 'flowEdges:', flowEdges.length);
-    if (flowNodes.length > 0) {
-      console.log('✅ flowNodes sample:', flowNodes[0]);
-    }
-  }, [flowNodes, flowEdges]);
-
-  // Handle selected node centering
   useEffect(() => {
     if (selectedNodeId) {
       try {
-        console.log('🎯 Selected node centering disabled for debugging:', selectedNodeId);
-        // navigation.centerOnSelected();
+        navigation.centerOnSelected();
       } catch (error) {
         console.warn('Error centering on selected node:', error);
         onError?.(error as Error, 'node-selection');
@@ -239,23 +165,10 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
     }
   }, [selectedNodeId, navigation, onError]);
 
-  // Cleanup throttle timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (throttleTimeoutRef.current) {
-        clearTimeout(throttleTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // Error states
+  // Render logic (error states, loading, etc.)
   if (validationError) {
     return (
-      <div 
-        className="h-full flex items-center justify-center text-red-600 bg-red-50 border border-red-200 rounded-lg"
-        role="alert"
-        aria-live="polite"
-      >
+      <div className="h-full flex items-center justify-center text-red-600 bg-red-50 border border-red-200 rounded-lg" role="alert">
         <div className="text-center p-6">
           <h3 className="font-semibold mb-2">Graph Validation Error</h3>
           <p className="text-sm">{validationError}</p>
@@ -264,97 +177,65 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
     );
   }
 
+  if (!hasData && data.length > 0) {
+    return (
+      <div className="h-full flex items-center justify-center text-gray-500" role="status">
+        <p>Processing graph data...</p>
+      </div>
+    );
+  }
+
   if (!hasData) {
     return (
-      <div 
-        className="h-full flex items-center justify-center text-gray-500"
-        role="status"
-        aria-live="polite"
-      >
+      <div className="h-full flex items-center justify-center text-gray-500" role="status">
         <p>{ERROR_MESSAGES.NO_DATA}</p>
       </div>
     );
   }
 
   return (
-    <div 
-      className="h-full w-full relative"
-      role="application"
-      aria-label={ACCESSIBILITY_LABELS.graphContainer}
-    >
-      {/* Debug overlay to show data status */}
-      <div className="absolute top-2 left-2 bg-yellow-100 border border-yellow-400 p-2 text-xs z-50 rounded">
-        <div>Original data: {data.length} nodes</div>
-        <div>Final nodes: {finalNodes.length}</div>
-        <div>Flow nodes: {flowNodes.length}</div>
-        <div>hasData: {hasData ? 'true' : 'false'}</div>
+    <div className="h-full w-full relative" role="application" aria-label={ACCESSIBILITY_LABELS.graphContainer}>
+      {/* Debug overlay - can be removed in production */}
+      <div className="absolute top-2 left-2 bg-yellow-100 border border-yellow-400 p-2 text-xs z-50 rounded shadow-lg">
+        <div>Prop data: {data.length}</div>
+        <div>Processed nodes: {processedNodes.length}</div>
+        <div>React Flow nodes (rendered): {flowNodes.length}</div>
+        <div>hasData: {hasData.toString()}</div>
       </div>
       
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
-        onNodesChange={handleNodesChange}
+        onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
-        onMove={handleViewportChange}
+        onMove={(_, viewport) => setViewport(viewport)}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         connectionMode={ConnectionMode.Loose}
         className="bg-gray-50"
         attributionPosition="bottom-left"
-        // Accessibility improvements
+        // Performance & Usability
+        minZoom={0.1}
+        maxZoom={2}
+        defaultViewport={viewport}
+        onlyRenderVisibleElements
         nodesDraggable={true}
         nodesConnectable={false}
         elementsSelectable={true}
-        // Performance optimizations
-        minZoom={0.1}
-        maxZoom={2}
-        defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
-        // Performance settings for better node dragging
-        onlyRenderVisibleElements={true}
-        elevateNodesOnSelect={false}
-        elevateEdgesOnSelect={false}
-        disableKeyboardA11y={false}
-        // Reduce re-renders during interaction
-        selectNodesOnDrag={!isLargeGraph}
-        panOnDrag={isLargeGraph ? [1] : [1, 2]} // More restrictive panning for large graphs
-        deleteKeyCode={null} // Disable delete key to prevent accidental deletions
-        // Additional performance optimizations for large graphs
-        proOptions={{
-          hideAttribution: true,
-        }}
-        fitViewOptions={{
-          padding: 0.1,
-          includeHiddenNodes: false,
-        }}
-        // Aggressive performance settings for 100+ nodes
-        snapToGrid={false}
-        snapGrid={[1, 1]}
-        nodeOrigin={[0.5, 0.5]}
-        // Reduce render quality for better performance
-        translateExtent={[[-5000, -5000], [5000, 5000]]}
-        nodeExtent={[[-5000, -5000], [5000, 5000]]}
-        // Disable expensive features for large graphs
-        zoomOnScroll={flowNodes.length < 100}
-        zoomOnPinch={flowNodes.length < 100}
-        zoomOnDoubleClick={false}
-        preventScrolling={false}
-        // Optimize interaction handling
-        panOnScroll={false}
-        selectionOnDrag={false}
-        multiSelectionKeyCode={null}
+        proOptions={{ hideAttribution: true }}
+        fitViewOptions={{ padding: 0.1 }}
+        deleteKeyCode={null}
+        
+        // FIX: Apply adaptive settings explicitly to avoid passing unknown props to the DOM.
+        zoomOnScroll={adaptiveSettings.zoomOnScroll}
+        zoomOnPinch={adaptiveSettings.zoomOnPinch}
+        panOnDrag={adaptiveSettings.panOnDrag}
+        selectNodesOnDrag={adaptiveSettings.selectNodesOnDrag}
+        elevateNodesOnSelect={adaptiveSettings.elevateNodesOnSelect}
       >
-        <Background 
-          color="#e5e7eb" 
-          size={1} 
-          aria-label={ACCESSIBILITY_LABELS.background}
-        />
-        
-        <Controls 
-          className="!bg-white !border !border-gray-200 !shadow-lg !rounded-lg"
-          aria-label={ACCESSIBILITY_LABELS.controls}
-        />
-        
+        <Background color="#e5e7eb" size={1} aria-label={ACCESSIBILITY_LABELS.background} />
+        <Controls className="!bg-white !border !border-gray-200 !shadow-lg !rounded-lg" aria-label={ACCESSIBILITY_LABELS.controls} />
         <MiniMap
           className="!bg-white !border !border-gray-200 !shadow-lg !rounded-lg"
           nodeColor={getMinimapNodeColor}
@@ -362,7 +243,7 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
           aria-label={ACCESSIBILITY_LABELS.minimap}
         />
       </ReactFlow>
-      
+
       <PerformanceMonitor
         nodeCount={flowNodes.length}
         edgeCount={flowEdges.length}
@@ -371,4 +252,3 @@ export const GraphVisualization: React.FC<GraphVisualizationProps> = ({
     </div>
   );
 };
-
