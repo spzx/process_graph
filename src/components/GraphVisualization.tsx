@@ -21,6 +21,8 @@ import 'reactflow/dist/style.css';
 
 import { CustomNode } from './CustomNode';
 import { CustomEdge } from './CustomEdge';
+import { GroupNode } from './GroupNode';
+import { createGroupNodes } from './GroupBackground';
 import { PerformanceMonitor } from './PerformanceMonitor';
 import { GraphNode } from '../types';
 import {
@@ -75,7 +77,13 @@ const GraphLayoutWrapper: React.FC<GraphVisualizationProps> = (props) => {
     if (processedNodes.length > 0) {
       // getLayoutedElements now uses the GraphLayoutManager system and returns a Promise.
       getLayoutedElements(processedNodes, processedEdges).then(layoutedNodes => {
-        setFlowNodes(layoutedNodes);
+        // Create group background nodes and combine with regular nodes
+        const groupNodes = createGroupNodes(layoutedNodes);
+        const allNodes = [...groupNodes, ...layoutedNodes];
+        
+        console.log('🎯 Combined nodes: ', allNodes.length, '(', groupNodes.length, 'groups +', layoutedNodes.length, 'regular)');
+        
+        setFlowNodes(allNodes);
         setFlowEdges(processedEdges);
         // Set a flag to true to trigger the fitView effect once nodes are in state.
         setIsLaidOut(true);
@@ -110,7 +118,7 @@ const GraphLayoutWrapper: React.FC<GraphVisualizationProps> = (props) => {
   // Memoize event handlers and other props to optimize performance.
   const handleNodeClick = useNodeClick(props.data, props.onNodeSelect);
   const getMinimapNodeColor = useMinimapNodeColor();
-  const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
+  const nodeTypes = useMemo(() => ({ custom: CustomNode, group: GroupNode }), []);
   const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
 
   return (
@@ -120,6 +128,7 @@ const GraphLayoutWrapper: React.FC<GraphVisualizationProps> = (props) => {
             <div>🎯 Rendered: {flowNodes.length} positioned</div>
             <div>🔧 Layout: New dependency-aware system</div>
         </div>
+        
         <ReactFlow
             nodes={flowNodes}
             edges={flowEdges}

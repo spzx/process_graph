@@ -127,10 +127,25 @@ export class LayeringEngine {
 
     this.log('🔄 Adjusting paths for feedback edges:', Array.from(cycleResult.feedbackEdges));
     
-    // For now, return original paths
-    // In a full implementation, we would recalculate paths
-    // with feedback edges temporarily removed
-    return originalPaths;
+    // Use the modified graph from cycle breaking which has feedback edges handled
+    const modifiedGraph = cycleResult.modifiedGraph;
+    
+    // Recalculate longest paths with feedback edges properly handled
+    const adjustedPaths = this.calculateLongestPaths(modifiedGraph);
+    
+    // For feedback edges, ensure target nodes are positioned after source nodes
+    for (const feedbackEdgeId of cycleResult.feedbackEdges) {
+      const [source, target] = feedbackEdgeId.split('->');
+      if (source && target && adjustedPaths[source] !== undefined && adjustedPaths[target] !== undefined) {
+        // Ensure feedback edge target is placed in a later layer than source
+        if (adjustedPaths[target] <= adjustedPaths[source]) {
+          adjustedPaths[target] = adjustedPaths[source] + 1;
+          this.log(`   ➡️ Adjusted ${target} to layer ${adjustedPaths[target]} (feedback edge from ${source})`);
+        }
+      }
+    }
+    
+    return adjustedPaths;
   }
 
   /**
@@ -543,6 +558,57 @@ export class LayeringEngine {
         this.log(`  Layer ${layerIndex}: [${nodeDetails}] (${nodeIds.length} nodes)`);
       });
     }
+  }
+
+  /**
+   * Calculates longest paths from start nodes to each node
+   */
+  private calculateLongestPaths(graph: DependencyGraph): PathLengthMap {
+    const paths: PathLengthMap = {};
+    const visited = new Set<string>();
+    const visiting = new Set<string>();
+
+    // Initialize all nodes to 0
+    for (const [nodeId] of graph.nodes) {
+      paths[nodeId] = 0;
+    }
+
+    // DFS to calculate longest paths
+    const dfs = (nodeId: string): number => {
+      if (visiting.has(nodeId)) {
+        // Cycle detected, return current path length
+        return paths[nodeId] || 0;
+      }
+      
+      if (visited.has(nodeId)) {
+        return paths[nodeId] || 0;
+      }
+
+      visiting.add(nodeId);
+      let maxPath = 0;
+
+      // Check all incoming edges
+      const incomingNodes = graph.incomingEdges.get(nodeId) || new Set();
+      for (const predecessorId of incomingNodes) {
+        const predecessorPath = dfs(predecessorId);
+        maxPath = Math.max(maxPath, predecessorPath + 1);
+      }
+
+      visiting.delete(nodeId);
+      visited.add(nodeId);
+      paths[nodeId] = maxPath;
+      
+      return maxPath;
+    };
+
+    // Calculate paths for all nodes
+    for (const [nodeId] of graph.nodes) {
+      if (!visited.has(nodeId)) {
+        dfs(nodeId);
+      }
+    }
+
+    return paths;
   }
 
   /**

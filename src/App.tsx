@@ -75,54 +75,6 @@ const SAMPLE_DATA: GraphNode[] = [
   }
 ];
 
-// Helper function for graph traversal (forward)
-const getConnectedNodes = (nodes: GraphNode[], startNodeId: string): GraphNode[] => {
-  console.log('🔗 getConnectedNodes called with start:', startNodeId, 'total nodes:', nodes.length);
-  
-  const nodeMap = new Map<string, GraphNode>();
-  nodes.forEach(node => nodeMap.set(node.nodeId, node));
-
-  const visited = new Set<string>();
-  const queue: string[] = [startNodeId];
-  const connectedNodes: GraphNode[] = [];
-
-  while (queue.length > 0) {
-    const currentId = queue.shift()!;
-    if (visited.has(currentId)) continue;
-
-    visited.add(currentId);
-    const currentNode = nodeMap.get(currentId);
-    if (currentNode) {
-      connectedNodes.push(currentNode);
-      console.log('🔗 Processing node:', currentId, 'nextNodes count:', currentNode.nextNodes.length);
-      
-      currentNode.nextNodes.forEach((nextNode, index) => {
-        console.log('🔗 NextNode', index, ':', nextNode);
-        
-        // Handle the new data structure with 'on', 'to', and 'description' fields
-        if (nextNode.to) {
-          const targetId = nextNode.to as string;
-          console.log('🔗 New structure - target:', targetId);
-          if (!visited.has(targetId) && nodeMap.has(targetId)) {
-            queue.push(targetId);
-          }
-        } else {
-          // Fallback to the old structure for backward compatibility
-          Object.values(nextNode as any).forEach((targetId: any) => {
-            if (typeof targetId === 'string' && !visited.has(targetId) && nodeMap.has(targetId)) {
-              console.log('🔗 Old structure - target:', targetId);
-              queue.push(targetId);
-            }
-          });
-        }
-      });
-    }
-  }
-  
-  console.log('🔗 getConnectedNodes result:', connectedNodes.length, 'nodes');
-  return connectedNodes;
-};
-
 // Helper function to find all paths from a target node back to the start node
 const getPathsToStart = (nodes: GraphNode[], targetNodeId: string, startNodeId: string): Set<string> => {
   const nodeMap = new Map<string, GraphNode>();
@@ -198,7 +150,6 @@ function App() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [highlightOrderChangeField, setHighlightOrderChangeField] = useState<string>('none'); // Default to 'none'
   const [highlightOrderChangeValue, setHighlightOrderChangeValue] = useState<string | null>(null);
-  const [showOnlyFromStart, setShowOnlyFromStart] = useState<boolean>(true);
   const [highlightedPathToStartNodeIds, setHighlightedPathToStartNodeIds] = useState<Set<string> | null>(null);
   const [currentTraversalIndex, setCurrentTraversalIndex] = useState(-1); // New state for traversal
   const [isUsingSampleData, setIsUsingSampleData] = useState(false); // Track if sample data is loaded
@@ -208,36 +159,11 @@ function App() {
     console.log('🔄 graphData changed:', graphData.length, 'nodes');
   }, [graphData]);
 
-  // This memo now determines the base set of nodes based on 'showOnlyFromStart'
-  // It operates on the full graphData to ensure connectivity is correctly determined.
+  // Always show all nodes - removed filtering logic
   const baseGraphForDisplay = useMemo(() => {
-    console.log('🔍 baseGraphForDisplay calculation - graphData:', graphData.length, 'showOnlyFromStart:', showOnlyFromStart);
-    
-    // Temporarily disable filtering to debug the issue
-    console.log('🔍 Temporarily showing all nodes for debugging');
+    console.log('🔍 Showing all nodes:', graphData.length);
     return graphData;
-    
-    // Original logic (commented out for debugging)
-    /*
-    if (!showOnlyFromStart) {
-      console.log('🔍 Showing all nodes:', graphData.length);
-      return graphData;
-    }
-
-    const startNode = graphData.find(node => node.type === 'start');
-    console.log('🔍 Start node found:', startNode ? startNode.nodeId : 'none');
-    
-    if (!startNode) {
-      // If "show only from start" is checked but no start node exists, show nothing
-      console.log('⚠️ No start node found, returning empty array');
-      return [];
-    }
-
-    const connectedNodes = getConnectedNodes(graphData, startNode.nodeId);
-    console.log('🔍 Connected nodes from start:', connectedNodes.length);
-    return connectedNodes;
-    */
-  }, [graphData, showOnlyFromStart]);
+  }, [graphData]);
 
   // This memo now identifies nodes that match the search query
   const searchedNodeIds = useMemo(() => {
@@ -422,7 +348,6 @@ function App() {
     setSearchQuery('');
     setHighlightOrderChangeField('none'); // Reset to 'none'
     setHighlightOrderChangeValue(null);
-    // setShowOnlyFromStart(false); // Removed this line to prevent unchecking the checkbox
     const paths = getPathsToStart(graphData, targetNodeId, startNode.nodeId);
     setHighlightedPathToStartNodeIds(paths);
     setHighlightedNodeId(targetNodeId); // Keep the clicked node highlighted and centered
@@ -438,7 +363,6 @@ function App() {
     setUploadError(null);
     setHighlightOrderChangeField('none'); // Reset highlight field to 'none'
     setHighlightOrderChangeValue(null); // Reset highlight value
-    setShowOnlyFromStart(true); // Reset filter
     setHighlightedPathToStartNodeIds(null); // Reset path highlight
     setCurrentTraversalIndex(-1); // Explicitly reset traversal index
   };
@@ -603,12 +527,6 @@ function App() {
                       </span>
                     </div>
                   )}
-                  {showOnlyFromStart && (
-                    <div className="flex items-center space-x-2 text-sm text-green-600">
-                      <ArrowRightCircle className="w-4 h-4" />
-                      <span>Showing only nodes from 'start'</span>
-                    </div>
-                  )}
                   {highlightedPathToStartNodeIds && highlightedPathToStartNodeIds.size > 0 && (
                     <div className="flex items-center space-x-2 text-sm text-indigo-600">
                       <ArrowRightCircle className="w-4 h-4" />
@@ -618,18 +536,6 @@ function App() {
                 </div>
 
                 <div className="flex items-center space-x-4">
-                  {/* "Show only from start" checkbox */}
-                  <div className="flex items-center space-x-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      id="showOnlyFromStart"
-                      checked={showOnlyFromStart}
-                      onChange={(e) => setShowOnlyFromStart(e.target.checked)}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="showOnlyFromStart" className="font-medium">Show only from start</label>
-                  </div>
-
                   {uniqueOrderChangeFields.length > 0 && (
                     <>
                       <div className="flex items-center space-x-2 text-sm text-gray-700">

@@ -401,6 +401,17 @@ export class CycleHandler {
     if (edge.condition && edge.condition.toLowerCase().includes('error')) {
       impact += 3;
     }
+    
+    // Specific handling for payment reauth cycle to ensure correct ordering
+    if (edge.source === 'shouldReauthorize' && edge.target === 'reauthorize') {
+      // Prefer breaking the reauth initiation edge to maintain left-to-right flow
+      impact -= 2; // Lower impact = preferred for breaking
+    }
+    
+    if (edge.source === 'takePayment' && edge.target === 'shouldReauthorize') {
+      // Avoid breaking the main payment flow if possible
+      impact += 3; // Higher impact = avoid breaking
+    }
 
     return impact;
   }
@@ -418,10 +429,17 @@ export class CycleHandler {
       reasoning += ` (condition: ${edge.condition})`;
     }
     
-    reasoning += ` - lowest layout impact among cycle edges`;
-    
-    if (sourceNode?.data.nodeType === 'action' && targetNode?.data.nodeType === 'action') {
-      reasoning += ', both nodes are actions (less critical)';
+    // Specific reasoning for payment reauth cycle
+    if (edge.source === 'shouldReauthorize' && edge.target === 'reauthorize') {
+      reasoning += ' - breaking reauth initiation maintains payment flow order and left-to-right layout';
+    } else if (edge.source === 'takePayment' && edge.target === 'shouldReauthorize') {
+      reasoning += ' - preserving main payment decision flow';
+    } else {
+      reasoning += ` - lowest layout impact among cycle edges`;
+      
+      if (sourceNode?.data.nodeType === 'action' && targetNode?.data.nodeType === 'action') {
+        reasoning += ', both nodes are actions (less critical)';
+      }
     }
     
     return reasoning;
@@ -438,10 +456,41 @@ export class CycleHandler {
    * Creates a modified graph with feedback edges marked
    */
   private createModifiedGraph(graph: DependencyGraph, feedbackEdges: Set<string>): DependencyGraph {
-    // For now, return the original graph
-    // In a full implementation, we would create a new graph structure
-    // with feedback edges marked but not included in the dependency calculations
-    return graph;
+    // Create a deep copy of the graph with feedback edges removed from dependency calculations
+    const modifiedIncomingEdges = new Map<string, Set<string>>();
+    const modifiedOutgoingEdges = new Map<string, Set<string>>();
+    const modifiedEdges: DependencyEdge[] = [];
+    
+    // Initialize maps
+    for (const [nodeId] of graph.nodes) {
+      modifiedIncomingEdges.set(nodeId, new Set());
+      modifiedOutgoingEdges.set(nodeId, new Set());
+    }
+    
+    // Add edges that are not feedback edges
+    for (const edge of graph.edges) {
+      const edgeId = this.getEdgeId(edge);
+      
+      if (!feedbackEdges.has(edgeId)) {
+        // Include in dependency calculations
+        modifiedIncomingEdges.get(edge.target)?.add(edge.source);
+        modifiedOutgoingEdges.get(edge.source)?.add(edge.target);
+      }
+      
+      // Keep all edges in the edge list (for rendering), but mark feedback edges
+      modifiedEdges.push({
+        ...edge,
+        // Add a marker to identify feedback edges
+        weight: feedbackEdges.has(edgeId) ? -1 : edge.weight
+      });
+    }
+    
+    return {
+      ...graph,
+      incomingEdges: modifiedIncomingEdges,
+      outgoingEdges: modifiedOutgoingEdges,
+      edges: modifiedEdges
+    };
   }
 
   /**

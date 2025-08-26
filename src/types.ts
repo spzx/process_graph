@@ -8,6 +8,7 @@ export interface GraphNode {
   description: string;
   shortDescription: string;
   businessPurpose?: string; // New field
+  groupName?: string; // New field for node grouping
   nextNodes: Array<{
     on: string;
     to: string;
@@ -54,6 +55,7 @@ export interface FlowNodeData {
   shortDescription: string;
   description: string;
   businessPurpose?: string;
+  groupName?: string; // New field for node grouping
   nextNodes: Array<{
     on: string;
     to: string;

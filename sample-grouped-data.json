@@ -1,0 +1,146 @@
+[
+  {
+    "nodeId": "start",
+    "description": "Start the payment process",
+    "shortDescription": "Payment Start",
+    "groupName": "Payment Processing",
+    "type": "start",
+    "nextNodes": [
+      {
+        "on": "continue",
+        "to": "validateCard",
+        "description": "Proceed to card validation"
+      }
+    ]
+  },
+  {
+    "nodeId": "validateCard",
+    "description": "Validate the credit card information",
+    "shortDescription": "Card Validation",
+    "groupName": "Payment Processing",
+    "type": "action",
+    "nextNodes": [
+      {
+        "on": "success",
+        "to": "processPayment",
+        "description": "Card is valid, process payment"
+      },
+      {
+        "on": "fail",
+        "to": "cardError",
+        "description": "Card validation failed"
+      }
+    ]
+  },
+  {
+    "nodeId": "processPayment",
+    "description": "Process the payment transaction",
+    "shortDescription": "Payment Processing",
+    "groupName": "Payment Processing",
+    "type": "action",
+    "nextNodes": [
+      {
+        "on": "success",
+        "to": "sendConfirmation",
+        "description": "Payment successful, send confirmation"
+      },
+      {
+        "on": "fail",
+        "to": "paymentError",
+        "description": "Payment processing failed"
+      }
+    ]
+  },
+  {
+    "nodeId": "sendConfirmation",
+    "description": "Send payment confirmation to customer",
+    "shortDescription": "Send Confirmation",
+    "groupName": "Notification System",
+    "type": "action",
+    "nextNodes": [
+      {
+        "on": "success",
+        "to": "logTransaction",
+        "description": "Confirmation sent, log the transaction"
+      },
+      {
+        "on": "fail",
+        "to": "notificationError",
+        "description": "Failed to send confirmation"
+      }
+    ]
+  },
+  {
+    "nodeId": "logTransaction",
+    "description": "Log the transaction in the system",
+    "shortDescription": "Transaction Logging",
+    "groupName": "Notification System",
+    "type": "action",
+    "nextNodes": [
+      {
+        "on": "continue",
+        "to": "end",
+        "description": "Transaction completed successfully"
+      }
+    ]
+  },
+  {
+    "nodeId": "cardError",
+    "description": "Handle card validation error",
+    "shortDescription": "Card Error",
+    "groupName": "Error Handling",
+    "type": "action",
+    "nextNodes": [
+      {
+        "on": "retry",
+        "to": "validateCard",
+        "description": "Retry card validation"
+      },
+      {
+        "on": "cancel",
+        "to": "end",
+        "description": "Cancel the transaction"
+      }
+    ]
+  },
+  {
+    "nodeId": "paymentError",
+    "description": "Handle payment processing error",
+    "shortDescription": "Payment Error",
+    "groupName": "Error Handling",
+    "type": "action",
+    "nextNodes": [
+      {
+        "on": "retry",
+        "to": "processPayment",
+        "description": "Retry payment processing"
+      },
+      {
+        "on": "cancel",
+        "to": "end",
+        "description": "Cancel the transaction"
+      }
+    ]
+  },
+  {
+    "nodeId": "notificationError",
+    "description": "Handle notification sending error",
+    "shortDescription": "Notification Error",
+    "groupName": "Error Handling",
+    "type": "action",
+    "nextNodes": [
+      {
+        "on": "continue",
+        "to": "logTransaction",
+        "description": "Continue without notification"
+      }
+    ]
+  },
+  {
+    "nodeId": "end",
+    "description": "End of payment process",
+    "shortDescription": "Process End",
+    "type": "end",
+    "nextNodes": []
+  }
+]

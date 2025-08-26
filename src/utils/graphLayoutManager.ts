@@ -208,8 +208,10 @@ export class GraphLayoutManager {
       // Stage 5: Layout Validation
       stageStart = performance.now();
       this.log('🔍 Stage 5: Layout Validation');
+      // Use the modified graph from cycle breaking if available, otherwise use original graph
+      const graphForValidation = cycleBreaking?.modifiedGraph || dependencyResult.graph;
       const validationResult = this.layoutValidator.validateLayout(
-        dependencyResult.graph,
+        graphForValidation,
         layeringResult.assignment,
         positioningResult.positions
       );

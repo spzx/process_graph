@@ -63,6 +63,7 @@ export const useGraphNodes = (
           shortDescription: node.shortDescription,
           description: node.description,
           businessPurpose: node.businessPurpose,
+          groupName: node.groupName, // Include group name for grouping
           nextNodes: node.nextNodes,
           isSelected: node.nodeId === selectedNodeId,
           isOrderChangeNode,
