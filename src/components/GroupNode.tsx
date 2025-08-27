@@ -6,13 +6,7 @@
  */
 import React from 'react';
 import { NodeProps } from 'reactflow';
-
-interface GroupNodeData {
-  groupName: string;
-  nodeCount: number;
-  color: string;
-  borderColor: string;
-}
+import { GroupNodeData } from '../types';
 
 export const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ data }) => {
   return (

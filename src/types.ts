@@ -40,13 +40,32 @@ export type NodeType = 'end' | 'wait' | 'action' | 'start';
 // Enhanced FlowNode interface with better type safety
 export interface FlowNode {
   id: string;
-  type: 'custom';
+  type: 'custom' | 'group';
   position: { x: number; y: number };
   width?: number;
   height?: number;
   targetPosition?: 'top' | 'bottom' | 'left' | 'right';
   sourcePosition?: 'top' | 'bottom' | 'left' | 'right';
-  data: FlowNodeData;
+  style?: Record<string, any>;
+  selectable?: boolean;
+  draggable?: boolean;
+  data: FlowNodeData | GroupNodeData;
+}
+
+// Group node data interface
+export interface GroupNodeData {
+  groupName: string;
+  nodeCount: number;
+  color: string;
+  borderColor: string;
+  label: string;
+  shortDescription: string;
+  description: string;
+  nextNodes: Array<{
+    on: string;
+    to: string;
+    description: string;
+  }>;
 }
 
 // Separate interface for FlowNode data for better organization

@@ -32,7 +32,7 @@ import {
 } from '../hooks/useGraphVisualization';
 import { useAdaptivePerformanceSettings } from '../hooks/useLargeGraphOptimization';
 import { safeValidateGraph } from '../utils/validation';
-import { getLayoutedElements } from '../utils/layout'; // Modern dependency-aware layout system
+import { getGroupedLayoutElements } from '../utils/groupLayout'; // Group-aware layout system
 import {
   ERROR_MESSAGES,
   ACCESSIBILITY_LABELS,
@@ -71,12 +71,16 @@ const GraphLayoutWrapper: React.FC<GraphVisualizationProps> = (props) => {
     props.highlightedPathToStartNodeIds,
   );
 
-  // This useEffect handles the asynchronous layout calculation from the new GraphLayoutManager.
+  // This useEffect handles the asynchronous layout calculation with group awareness.
   useEffect(() => {
     // Only run the layout if there are nodes to process.
     if (processedNodes.length > 0) {
-      // getLayoutedElements now uses the GraphLayoutManager system and returns a Promise.
-      getLayoutedElements(processedNodes, processedEdges).then(layoutedNodes => {
+      // Use group-aware layout system that clusters nodes by groupName
+      getGroupedLayoutElements(processedNodes, processedEdges, {
+        groupSpacing: 400,   // Space between different groups
+        groupPadding: 80,    // Padding around each group
+        maintainDependencyFlow: true  // Respect cross-group dependencies
+      }).then(layoutedNodes => {
         // Create group background nodes and combine with regular nodes
         const groupNodes = createGroupNodes(layoutedNodes);
         const allNodes = [...groupNodes, ...layoutedNodes];
@@ -88,7 +92,7 @@ const GraphLayoutWrapper: React.FC<GraphVisualizationProps> = (props) => {
         // Set a flag to true to trigger the fitView effect once nodes are in state.
         setIsLaidOut(true);
       }).catch(error => {
-        console.error("Layout calculation failed:", error);
+        console.error("Group layout calculation failed:", error);
         // Fallback to un-layouted nodes if layout system fails
         setFlowNodes(processedNodes);
         setFlowEdges(processedEdges);
@@ -126,7 +130,8 @@ const GraphLayoutWrapper: React.FC<GraphVisualizationProps> = (props) => {
         <div className="absolute top-2 left-2 bg-blue-100 border border-blue-400 p-2 text-xs z-50 rounded shadow-lg">
             <div>📊 Graph Data: {props.data.length} nodes</div>
             <div>🎯 Rendered: {flowNodes.length} positioned</div>
-            <div>🔧 Layout: New dependency-aware system</div>
+            <div>🎨 Layout: Group-aware clustering system</div>
+            <div>🏷️ Groups: {new Set(props.data.filter(n => n.groupName).map(n => n.groupName)).size} detected</div>
         </div>
         
         <ReactFlow

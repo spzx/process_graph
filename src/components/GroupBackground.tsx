@@ -5,7 +5,7 @@
  * These nodes integrate properly with React Flow's coordinate system.
  */
 import React, { useMemo } from 'react';
-import { FlowNode } from '../types';
+import { FlowNode, GroupNodeData } from '../types';
 
 interface GroupBackgroundProps {
   nodes: FlowNode[];
@@ -97,7 +97,7 @@ export const createGroupNodes = (nodes: FlowNode[]): FlowNode[] => {
         shortDescription: `Group: ${groupName}`,
         description: `Group containing ${groupNodes_inner.length} nodes`,
         nextNodes: [],
-      },
+      } as GroupNodeData,
       selectable: false,
       draggable: false,
     };
