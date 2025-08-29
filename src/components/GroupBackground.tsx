@@ -53,8 +53,8 @@ export const createGroupNodes = (nodes: FlowNode[]): FlowNode[] => {
       
 
 
-    // Calculate group bounds with padding
-    const padding = 50;
+    // Calculate group bounds with increased padding for better edge visibility
+    const padding = 80;
     let minX = Infinity;
     let maxX = -Infinity;
     let minY = Infinity;

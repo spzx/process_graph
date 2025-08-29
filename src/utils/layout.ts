@@ -22,8 +22,8 @@ function getLayoutManager(options?: Partial<LayoutOptions>): GraphLayoutManager 
       optimization: 'balanced',
       cycleHandling: 'break',
       positioning: {
-        layerSpacing: 350,
-        nodeSpacing: 250,
+        layerSpacing: 450,
+        nodeSpacing: 350,
         basePosition: { x: 50, y: 50 },
         nodeSize: {
           width: 280,
@@ -103,14 +103,14 @@ function fallbackPositioning(nodes: FlowNode[]): FlowNode[] {
   console.log('📐 Applying fallback positioning for', nodes.length, 'nodes');
   
   // Simple left-to-right positioning based on node index
-  const layerSpacing = 350;
-  const nodeSpacing = 250;
+  const layerSpacing = 450;
+  const nodeSpacing = 350;
   const baseX = 50;
   const baseY = 50;
   
   // Find start node and put it first (with null checks)
-  const startNode = nodes.find(node => node.data?.nodeType === 'start');
-  const otherNodes = nodes.filter(node => node.data?.nodeType !== 'start');
+  const startNode = nodes.find(node => node.data && 'nodeType' in node.data && node.data.nodeType === 'start');
+  const otherNodes = nodes.filter(node => !node.data || !('nodeType' in node.data) || node.data.nodeType !== 'start');
   const orderedNodes = startNode ? [startNode, ...otherNodes] : nodes;
   
   return orderedNodes.map((node, index) => ({

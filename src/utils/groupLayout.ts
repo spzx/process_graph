@@ -30,8 +30,8 @@ interface GroupCluster {
 }
 
 const DEFAULT_GROUP_OPTIONS: GroupLayoutOptions = {
-  groupSpacing: 400,
-  groupPadding: 80,
+  groupSpacing: 500,
+  groupPadding: 120,
   maintainDependencyFlow: true,
 };
 
