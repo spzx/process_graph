@@ -182,8 +182,7 @@ export const useGraphNavigation = (
           setCenter(
             center.x, 
             center.y, 
-            ANIMATION_CONFIG.centerNode.zoom, // Use centerNode zoom for better focus
-            { duration: ANIMATION_CONFIG.centerNode.duration }
+            { zoom: ANIMATION_CONFIG.centerNode.zoom }
           );
         }
       }
@@ -197,13 +196,16 @@ export const useGraphNavigation = (
     lastSelectedNodeId.current = selectedNodeId;
 
     const nodeToCenter = getNodes().find((n: any) => n.id === selectedNodeId);
-    if (nodeToCenter) {
-      const center = calculateNodeCenter(nodeToCenter);
+    if (nodeToCenter && nodeToCenter.width !== null) {
+      const center = calculateNodeCenter({
+        position: nodeToCenter.position,
+        width: nodeToCenter.width || 280,
+        height: nodeToCenter.height || 220
+      });
       setCenter(
         center.x, 
         center.y, 
-        ANIMATION_CONFIG.centerNode.zoom, 
-        { duration: ANIMATION_CONFIG.centerNode.duration }
+        { zoom: ANIMATION_CONFIG.centerNode.zoom }
       );
     }
   }, [selectedNodeId, getNodes, setCenter]);

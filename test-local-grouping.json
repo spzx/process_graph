@@ -1,0 +1,82 @@
+[
+  {
+    "nodeId": "node1",
+    "type": "start",
+    "shortDescription": "Node 1",
+    "description": "First node in group1",
+    "groupName": "group1",
+    "nextNodes": [
+      {
+        "on": "success",
+        "to": "node2",
+        "description": "Go to node2 in group2"
+      }
+    ]
+  },
+  {
+    "nodeId": "node2",
+    "type": "action",
+    "shortDescription": "Node 2",
+    "description": "First node in group2",
+    "groupName": "group2",
+    "nextNodes": [
+      {
+        "on": "success",
+        "to": "node3",
+        "description": "Go to node3 in group2"
+      }
+    ]
+  },
+  {
+    "nodeId": "node3",
+    "type": "action",
+    "shortDescription": "Node 3",
+    "description": "Second node in group2 - connected to node2",
+    "groupName": "group2",
+    "nextNodes": [
+      {
+        "on": "success",
+        "to": "node4",
+        "description": "Go to node4 in group1"
+      }
+    ]
+  },
+  {
+    "nodeId": "node4",
+    "type": "end",
+    "shortDescription": "Node 4",
+    "description": "Second node in group1 - NOT connected to node1",
+    "groupName": "group1",
+    "nextNodes": []
+  },
+  {
+    "nodeId": "isolated_a",
+    "type": "action",
+    "shortDescription": "Isolated A",
+    "description": "Isolated node in group3",
+    "groupName": "group3",
+    "nextNodes": [
+      {
+        "on": "success",
+        "to": "isolated_b",
+        "description": "Go to isolated B"
+      }
+    ]
+  },
+  {
+    "nodeId": "isolated_b",
+    "type": "action",
+    "shortDescription": "Isolated B",
+    "description": "Second isolated node in group3 - connected to isolated_a",
+    "groupName": "group3",
+    "nextNodes": []
+  },
+  {
+    "nodeId": "single_node",
+    "type": "action",
+    "shortDescription": "Single Node",
+    "description": "Single node in group4",
+    "groupName": "group4",
+    "nextNodes": []
+  }
+]

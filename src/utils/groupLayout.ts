@@ -1,9 +1,10 @@
 /**
- * Group-aware layout system
+ * Local group-aware layout system
  * 
  * This module extends the standard layout system to support visual grouping
- * of nodes based on the groupName field, while maintaining dependency flow
- * within each group and proper spacing between groups.
+ * of nodes based on connected components that share the same groupName field.
+ * Unlike global grouping, nodes are only grouped if they are directly connected
+ * to other nodes with the same groupName, creating localized visual groups.
  */
 
 import type { FlowNode, FlowEdge } from '../types';
@@ -35,6 +36,91 @@ const DEFAULT_GROUP_OPTIONS: GroupLayoutOptions = {
 };
 
 /**
+ * Finds local groups - connected components of nodes with the same groupName
+ * Returns a Map where keys are unique group identifiers and values are arrays of connected nodes
+ */
+function findLocalGroups(nodes: FlowNode[], edges: FlowEdge[]): Map<string, FlowNode[]> {
+  const localGroups = new Map<string, FlowNode[]>();
+  const visited = new Set<string>();
+  let groupCounter = 0;
+  
+  // Build adjacency map for nodes with groupName
+  const adjacencyMap = new Map<string, Set<string>>();
+  nodes.forEach(node => {
+    adjacencyMap.set(node.id, new Set());
+  });
+  
+  // Add edges between nodes that have groupName
+  edges.forEach(edge => {
+    const sourceNode = nodes.find(n => n.id === edge.source);
+    const targetNode = nodes.find(n => n.id === edge.target);
+    
+    if (sourceNode && targetNode) {
+      adjacencyMap.get(edge.source)?.add(edge.target);
+      adjacencyMap.get(edge.target)?.add(edge.source); // bidirectional for component detection
+    }
+  });
+  
+  // Find connected components with same groupName
+  for (const node of nodes) {
+    if (visited.has(node.id)) continue;
+    
+    const groupName = node.data.groupName!;
+    const component = findConnectedComponent(node, nodes, adjacencyMap, visited, groupName);
+    
+    if (component.length > 0) {
+      const groupId = `${groupName}_${groupCounter++}`;
+      localGroups.set(groupId, component);
+    }
+  }
+  
+  return localGroups;
+}
+
+/**
+ * Finds all nodes in the same connected component with the same groupName
+ */
+function findConnectedComponent(
+  startNode: FlowNode,
+  allNodes: FlowNode[],
+  adjacencyMap: Map<string, Set<string>>,
+  visited: Set<string>,
+  targetGroupName: string
+): FlowNode[] {
+  const component: FlowNode[] = [];
+  const stack = [startNode];
+  
+  while (stack.length > 0) {
+    const currentNode = stack.pop()!;
+    
+    if (visited.has(currentNode.id)) {
+      continue;
+    }
+    
+    if (currentNode.data.groupName !== targetGroupName) {
+      continue;
+    }
+    
+    visited.add(currentNode.id);
+    component.push(currentNode);
+    
+    // Add connected nodes with same groupName
+    const neighbors = adjacencyMap.get(currentNode.id) || new Set();
+    
+    for (const neighborId of neighbors) {
+      const neighborNode = allNodes.find(n => n.id === neighborId);
+      if (neighborNode && 
+          !visited.has(neighborId) && 
+          neighborNode.data.groupName === targetGroupName) {
+        stack.push(neighborNode);
+      }
+    }
+  }
+  
+  return component;
+}
+
+/**
  * Applies group-aware layout to nodes
  */
 export const getGroupedLayoutElements = async (
@@ -55,17 +141,14 @@ export const getGroupedLayoutElements = async (
     return standardLayout(nodes, edges);
   }
   
-  // Group nodes by groupName
+  // Group nodes by connected components with same groupName (local grouping)
+  const localGroups = findLocalGroups(groupedNodes, edges);
   const groupMap = new Map<string, FlowNode[]>();
-  groupedNodes.forEach(node => {
-    const groupName = node.data.groupName!;
-    if (!groupMap.has(groupName)) {
-      groupMap.set(groupName, []);
-    }
-    groupMap.get(groupName)!.push(node);
+  localGroups.forEach((nodes, groupId) => {
+    groupMap.set(groupId, nodes);
   });
   
-  console.log(`🏗️ Found ${groupMap.size} groups:`, Array.from(groupMap.keys()));
+
   
   // Determine group order based on dependency flow
   const groupOrder = determineGroupOrder(groupMap, edges, opts.maintainDependencyFlow);
@@ -89,11 +172,20 @@ export const getGroupedLayoutElements = async (
     // Apply standard layout to this group
     const layoutedGroupNodes = await standardLayout(groupNodes, internalEdges);
     
+    // Mark nodes with their local group ID for proper background grouping
+    const markedNodes = layoutedGroupNodes.map(node => ({
+      ...node,
+      data: {
+        ...node.data,
+        groupName: groupName // Use the local group ID to ensure proper grouping
+      }
+    }));
+    
     // Calculate current group bounds
-    const bounds = calculateGroupBounds(layoutedGroupNodes, opts.groupPadding);
+    const bounds = calculateGroupBounds(markedNodes, opts.groupPadding);
     
     // Adjust positions to start from currentX
-    const adjustedNodes = layoutedGroupNodes.map(node => ({
+    const adjustedNodes = markedNodes.map(node => ({
       ...node,
       position: {
         x: node.position.x - bounds.minX + currentX + opts.groupPadding,

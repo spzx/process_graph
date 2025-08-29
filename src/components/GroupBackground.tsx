@@ -24,7 +24,7 @@ const GROUP_COLORS = [
 ];
 
 export const createGroupNodes = (nodes: FlowNode[]): FlowNode[] => {
-  // Group nodes by groupName
+  // Group nodes by their actual groupName (which now includes local group IDs)
   const groupMap = new Map<string, FlowNode[]>();
   
   nodes.forEach(node => {
@@ -37,7 +37,7 @@ export const createGroupNodes = (nodes: FlowNode[]): FlowNode[] => {
     }
   });
 
-  console.log('🎯 GroupBackground: Found groups:', Array.from(groupMap.keys()));
+
 
   // Create group nodes
   const groupNodes: FlowNode[] = [];
@@ -46,7 +46,12 @@ export const createGroupNodes = (nodes: FlowNode[]): FlowNode[] => {
   groupMap.forEach((groupNodes_inner, groupName) => {
     if (groupNodes_inner.length === 0) return;
 
-    console.log(`📦 Group "${groupName}" has ${groupNodes_inner.length} nodes`);
+    // Extract original group name for display (remove local group counter)
+    const displayGroupName = groupName.includes('_') && /.*_\d+$/.test(groupName) 
+      ? groupName.substring(0, groupName.lastIndexOf('_'))
+      : groupName;
+      
+
 
     // Calculate group bounds with padding
     const padding = 50;
@@ -74,7 +79,7 @@ export const createGroupNodes = (nodes: FlowNode[]): FlowNode[] => {
       height: maxY - minY,
     };
 
-    console.log(`📐 Group "${groupName}" bounds:`, bounds);
+
 
     const colors = GROUP_COLORS[colorIndex % GROUP_COLORS.length];
     
@@ -89,13 +94,13 @@ export const createGroupNodes = (nodes: FlowNode[]): FlowNode[] => {
         zIndex: -1, // Behind regular nodes
       },
       data: {
-        groupName,
+        groupName: displayGroupName,
         nodeCount: groupNodes_inner.length,
         color: colors.bg,
         borderColor: colors.border,
-        label: groupName,
-        shortDescription: `Group: ${groupName}`,
-        description: `Group containing ${groupNodes_inner.length} nodes`,
+        label: displayGroupName,
+        shortDescription: `Group: ${displayGroupName}`,
+        description: `Local group containing ${groupNodes_inner.length} connected nodes`,
         nextNodes: [],
       } as GroupNodeData,
       selectable: false,
@@ -106,7 +111,7 @@ export const createGroupNodes = (nodes: FlowNode[]): FlowNode[] => {
     colorIndex++;
   });
 
-  console.log('🔍 GroupBackground: Created', groupNodes.length, 'group nodes');
+
   return groupNodes;
 };
 
